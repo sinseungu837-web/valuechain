@@ -4,6 +4,8 @@ ValueChain 주식 추천 플랫폼 - Streamlit 모바일 앱
 """
 import sys
 import os
+import warnings
+from datetime import datetime, timezone, timedelta
 sys.path.insert(0, ".")
 
 import streamlit as st
@@ -28,19 +30,235 @@ from analysis.shovel import ShovelDetector
 from analysis.maturity import MaturityClassifier
 from analysis.verdict import make_verdict
 
+KST = timezone(timedelta(hours=9))
+
 st.markdown("""
 <style>
-.buy  { color: #00c853; font-weight: bold; font-size: 1.1em; }
-.hold { color: #ffd600; font-weight: bold; font-size: 1.1em; }
-.sell { color: #ff1744; font-weight: bold; font-size: 1.1em; }
-.avoid{ color: #9e9e9e; font-weight: bold; font-size: 1.1em; }
+.buy   { color: #00c853; font-weight: bold; font-size: 1.15em; }
+.hold  { color: #ffd600; font-weight: bold; font-size: 1.15em; }
+.sell  { color: #ff1744; font-weight: bold; font-size: 1.15em; }
+.avoid { color: #9e9e9e; font-weight: bold; font-size: 1.15em; }
+.price-up   { color: #00c853; font-size: 1.4em; font-weight: bold; }
+.price-down { color: #ff1744; font-size: 1.4em; font-weight: bold; }
+.price-flat { color: #9e9e9e; font-size: 1.4em; font-weight: bold; }
+.source-tag { color: #888; font-size: 0.75em; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── 종목 카드 렌더링 ────────────────────────────────────────────────────
+# ── 자동 새로고침 (장중 60초마다) ────────────────────────────────────────
+def _is_market_hours() -> bool:
+    now = datetime.now(KST)
+    return now.weekday() < 5 and 9 <= now.hour < 16
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+    if _is_market_hours():
+        st_autorefresh(interval=60_000, key="market_refresh")
+except ImportError:
+    pass
+
+
+# ── 실시간 가격 티커 ─────────────────────────────────────────────────────
+@st.cache_data(ttl=60)
+def fetch_live_price(code: str):
+    """현재가·등락률·거래량 (60초 캐시)."""
+    import yfinance as yf
+    for suffix in [".KS", ".KQ"]:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            t = yf.Ticker(f"{code}{suffix}")
+        info = t.info
+        price = info.get("currentPrice") or info.get("regularMarketPrice")
+        if price:
+            prev  = info.get("previousClose") or price
+            chg   = price - prev
+            chg_p = chg / prev * 100 if prev else 0
+            vol   = info.get("volume") or 0
+            fetched_at = datetime.now(KST).strftime("%H:%M:%S")
+            return {
+                "price": price, "chg": chg, "chg_p": chg_p,
+                "volume": vol, "fetched_at": fetched_at,
+                "source": "Yahoo Finance (15분 지연)",
+            }
+    return None
+
+
+def render_price_ticker(code: str, name: str):
+    """종목 상단 가격 티커 (주식창 스타일)."""
+    data = fetch_live_price(code)
+    if not data:
+        return
+    price = data["price"]
+    chg   = data["chg"]
+    chg_p = data["chg_p"]
+    css   = "price-up" if chg > 0 else ("price-down" if chg < 0 else "price-flat")
+    arrow = "▲" if chg > 0 else ("▼" if chg < 0 else "-")
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown(
+            f'<span class="{css}">{price:,.0f}원 '
+            f'{arrow} {abs(chg):,.0f} ({chg_p:+.2f}%)</span>',
+            unsafe_allow_html=True,
+        )
+    with col2:
+        st.caption(f"거래량 {data['volume']:,}주")
+
+    st.markdown(
+        f'<span class="source-tag">출처: {data["source"]} | '
+        f'수집: {data["fetched_at"]} KST</span>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── 다년도 재무 추이 차트 ────────────────────────────────────────────────
+@st.cache_data(ttl=3600)
+def fetch_financials_history(code: str):
+    """4년 치 매출·영업이익 데이터."""
+    import yfinance as yf
+    import pandas as pd
+    for suffix in [".KS", ".KQ"]:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            t = yf.Ticker(f"{code}{suffix}")
+        fin = t.financials
+        if not fin.empty:
+            rows = {}
+            for label, key in [("매출(억)", "Total Revenue"),
+                                ("영업이익(억)", "Operating Income")]:
+                if key in fin.index:
+                    s = fin.loc[key].dropna().sort_index()
+                    rows[label] = (s / 1e8).round(0)
+            if rows:
+                df = pd.DataFrame(rows)
+                df.index = df.index.strftime("%Y")
+                return df, datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"), "Yahoo Finance"
+    return None, None, None
+
+
+@st.cache_data(ttl=60)
+def fetch_price_history(code: str):
+    """1년 주가 + 거래량 히스토리."""
+    import yfinance as yf
+    for suffix in [".KS", ".KQ"]:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            t = yf.Ticker(f"{code}{suffix}")
+        hist = t.history(period="1y")
+        if not hist.empty:
+            return hist, datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"), "Yahoo Finance"
+    return None, None, None
+
+
+# ── 지표 탭 ─────────────────────────────────────────────────────────────
+def _render_metrics_tab(v, real_data):
+    f   = real_data.financials
+    sig = real_data.market_signals
+    m   = v.metrics
+
+    # 주식창 스타일 가격 티커
+    st.markdown("##### 현재 시세")
+    render_price_ticker(v.code, v.name)
+    st.divider()
+
+    # 핵심 재무 지표
+    st.markdown("##### 핵심 지표")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("시가총액",    m["현재가"])
+    c2.metric("PER",         f"{sig.per:.1f}배"  if sig.per  else "N/A")
+    c3.metric("PBR",         f"{sig.pbr:.1f}배"  if sig.pbr  else "N/A")
+
+    c4, c5, c6 = st.columns(3)
+    c4.metric("매출성장(YoY)",  f"{f.revenue_growth_yoy:+.1f}%")
+    c5.metric("영업이익 성장",  f"{f.op_profit_growth_yoy:+.1f}%")
+    c6.metric("영익률",         f"{f.op_margin:.1f}%")
+
+    st.markdown(
+        '<span class="source-tag">출처: Yahoo Finance 연간 재무제표 | '
+        f'기준: 최근 결산연도</span>',
+        unsafe_allow_html=True,
+    )
+    st.divider()
+
+    # 다년도 매출·영업이익 추이
+    st.markdown("##### 매출 · 영업이익 추이 (연간)")
+    df_fin, fin_time, fin_src = fetch_financials_history(v.code)
+    if df_fin is not None and not df_fin.empty:
+        st.bar_chart(df_fin, height=220)
+        st.markdown(
+            f'<span class="source-tag">출처: {fin_src} | 수집: {fin_time}</span>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.caption("재무 추이 데이터 없음")
+    st.divider()
+
+    # 주가 차트 + 거래량
+    st.markdown("##### 주가 차트 (1년)")
+    hist, price_time, price_src = fetch_price_history(v.code)
+    if hist is not None:
+        st.line_chart(hist["Close"], height=200)
+        st.markdown("##### 거래량 (1년)")
+        st.bar_chart(hist["Volume"], height=120)
+        st.markdown(
+            f'<span class="source-tag">출처: {price_src} (15분 지연) | '
+            f'수집: {price_time}</span>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.caption("주가 데이터 없음")
+    st.divider()
+
+    # 판정 근거 전체
+    st.markdown("##### 판정 근거")
+    for r in v.reasons:
+        st.write(f"• {r}")
+    st.markdown(
+        '<span class="source-tag">곡괭이점수: 밸류체인 그래프 구조 분석 | '
+        '재무실체: Yahoo Finance 연간 재무제표</span>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── 뉴스 탭 ─────────────────────────────────────────────────────────────
+def _render_news_tab(company_name: str):
+    try:
+        with st.spinner("뉴스 불러오는 중..."):
+            news_items = fetch_stock_news(company_name, display=8)
+        if not news_items:
+            st.caption("관련 뉴스 없음")
+            return
+
+        fetched_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
+        st.markdown(
+            f'<span class="source-tag">출처: 네이버 뉴스 검색 API | '
+            f'수집: {fetched_at} | 검색어: "{company_name} 주가"</span>',
+            unsafe_allow_html=True,
+        )
+        st.divider()
+
+        for item in news_items:
+            st.markdown(f"**{item.title}**")
+            if item.description:
+                desc = item.description
+                st.caption(desc[:120] + "..." if len(desc) > 120 else desc)
+            if item.pub_date:
+                try:
+                    from email.utils import parsedate_to_datetime
+                    dt = parsedate_to_datetime(item.pub_date)
+                    st.caption(f"🕐 {dt.strftime('%Y-%m-%d %H:%M')}")
+                except Exception:
+                    st.caption(f"🕐 {item.pub_date[:16]}")
+            if item.link:
+                st.markdown(f"[기사 원문 →]({item.link})")
+            st.divider()
+    except Exception as e:
+        st.warning(f"뉴스 로드 실패: {e}")
+
+
+# ── 종목 카드 ────────────────────────────────────────────────────────────
 def render_verdict_card(v, real_data, action_css: str, action_label: str):
-    """BUY/HOLD/SELL 종목 카드 — 지표·뉴스 탭 포함."""
     with st.container(border=True):
         # 헤더
         c1, c2 = st.columns([3, 1])
@@ -51,110 +269,33 @@ def render_verdict_card(v, real_data, action_css: str, action_label: str):
             st.markdown(f'<span class="{action_css}">{action_label}</span>',
                         unsafe_allow_html=True)
 
-        # 핵심 수치 한 줄 요약
+        # 핵심 수치 한 줄
         m = v.metrics
         cols = st.columns(4)
-        cols[0].metric("매출성장", m["매출성장"])
-        cols[1].metric("영익률",   m["영업이익률"])
-        cols[2].metric("PER",      m["PER"])
+        cols[0].metric("매출성장",  m["매출성장"])
+        cols[1].metric("영익률",    m["영업이익률"])
+        cols[2].metric("PER",       m["PER"])
         cols[3].metric("1년수익률", m["1년수익률"])
 
-        # 판정 근거 한 줄
+        # 판정 요약
         st.info(v.reasons[-1], icon="💡")
 
-        # 탭: 지표 / 뉴스
-        tab_metric, tab_news = st.tabs(["📊 지표", "📰 뉴스"])
-
+        # 📊 지표 / 📰 뉴스 탭
+        tab_metric, tab_news = st.tabs(["📊 지표 상세", "📰 관련 뉴스"])
         with tab_metric:
             _render_metrics_tab(v, real_data)
-
         with tab_news:
             _render_news_tab(v.name)
-
-
-def _render_metrics_tab(v, real_data):
-    """상세 재무 지표 + 주가 차트."""
-    m = v.metrics
-    f = real_data.financials
-    sig = real_data.market_signals
-
-    # 주요 지표 표
-    st.markdown("**재무 지표**")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("시가총액",   m["현재가"])
-    col2.metric("곡괭이점수", m["곡괭이점수"])
-    col3.metric("4분면",      m["4분면"])
-
-    col4, col5, col6 = st.columns(3)
-    col4.metric("매출성장(YoY)", f"{f.revenue_growth_yoy:+.1f}%")
-    col5.metric("영업이익 성장", f"{f.op_profit_growth_yoy:+.1f}%")
-    col6.metric("영익률",        f"{f.op_margin:.1f}%")
-
-    col7, col8 = st.columns(2)
-    col7.metric("PER",  f"{sig.per:.1f}배" if sig.per else "N/A")
-    col8.metric("PBR",  f"{sig.pbr:.1f}배" if sig.pbr else "N/A")
-
-    # 판정 근거 전체
-    st.markdown("**판정 근거**")
-    for r in v.reasons:
-        st.write(f"• {r}")
-
-    # 주가 차트 (1년)
-    st.markdown("**주가 차트 (1년)**")
-    try:
-        import yfinance as yf
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            for suffix in [".KS", ".KQ"]:
-                ticker = yf.Ticker(f"{v.code}{suffix}")
-                hist = ticker.history(period="1y")
-                if not hist.empty:
-                    break
-        if not hist.empty:
-            st.line_chart(hist["Close"], height=200)
-        else:
-            st.caption("차트 데이터 없음")
-    except Exception as e:
-        st.caption(f"차트 로드 실패: {e}")
-
-
-def _render_news_tab(company_name: str):
-    """종목 관련 최신 뉴스."""
-    try:
-        with st.spinner("뉴스 불러오는 중..."):
-            news_items = fetch_stock_news(company_name, display=8)
-        if not news_items:
-            st.caption("관련 뉴스 없음")
-            return
-        for item in news_items:
-            with st.container():
-                st.markdown(f"**{item.title}**")
-                if item.description:
-                    st.caption(item.description[:100] + "..." if len(item.description) > 100 else item.description)
-                if item.pub_date:
-                    # pubDate 파싱: "Mon, 23 Jun 2025 10:30:00 +0900"
-                    try:
-                        from email.utils import parsedate_to_datetime
-                        dt = parsedate_to_datetime(item.pub_date)
-                        st.caption(f"🕐 {dt.strftime('%Y-%m-%d %H:%M')}")
-                    except Exception:
-                        st.caption(f"🕐 {item.pub_date[:16]}")
-                if item.link:
-                    st.markdown(f"[기사 원문 보기]({item.link})")
-                st.divider()
-    except Exception as e:
-        st.warning(f"뉴스 로드 실패: {e}")
 
 
 # ── 섹터 분석 실행 ───────────────────────────────────────────────────────
 def run_analysis(sectors: list):
     for sector_name, headlines, heat in sectors:
         st.divider()
-        col1, col2 = st.columns([3, 1])
-        with col1:
+        c1, c2 = st.columns([3, 1])
+        with c1:
             st.subheader(f"📊 {sector_name}")
-        with col2:
+        with c2:
             if heat:
                 st.metric("뉴스", f"{heat:,}건")
 
@@ -180,7 +321,7 @@ def run_analysis(sectors: list):
         det = ShovelDetector(vc)
         clf = MaturityClassifier()
         fin_map = {c: d.financials for c, d in all_data.items()}
-        scores = det.rank(fin_map)
+        scores  = det.rank(fin_map)
 
         verdicts = []
         for s in scores:
@@ -188,8 +329,7 @@ def run_analysis(sectors: list):
             if not d:
                 continue
             classified = clf.classify(s, d.market_signals)
-            v = make_verdict(classified, s, d.market_signals, d)
-            verdicts.append((v, d))
+            verdicts.append((make_verdict(classified, s, d.market_signals, d), d))
 
         buy_list  = [(v, d) for v, d in verdicts if v.action == "BUY"]
         hold_list = [(v, d) for v, d in verdicts if v.action == "HOLD"]
@@ -215,7 +355,10 @@ def run_analysis(sectors: list):
 
 # ── 메인 UI ─────────────────────────────────────────────────────────────
 st.title("📈 ValueChain 주식 추천")
-st.caption("뉴스 기반 핫 섹터 → 밸류체인 분석 → BUY/HOLD/SELL")
+
+now_kst = datetime.now(KST)
+market_status = "🟢 장중 (60초 자동 갱신)" if _is_market_hours() else "🔴 장 마감"
+st.caption(f"{now_kst.strftime('%Y-%m-%d %H:%M KST')}  {market_status}")
 st.caption("※ 투자 자문 아님. 후보 추리기 참고 자료.")
 
 st.divider()
@@ -226,10 +369,8 @@ if mode == "🔥 뉴스 기반 자동 감지":
     if st.button("🔍 분석 시작", type="primary", use_container_width=True):
         with st.spinner("뉴스 수집 중..."):
             hot = detect_hot_sectors(top_n=top_n)
-        sectors_to_run = [(h.sector, h.top_headlines, h.heat) for h in hot]
-        run_analysis(sectors_to_run)
+        run_analysis([(h.sector, h.top_headlines, h.heat) for h in hot])
 else:
-    available = list(SECTOR_QUERIES.keys())
-    selected = st.selectbox("섹터 선택", available)
+    selected = st.selectbox("섹터 선택", list(SECTOR_QUERIES.keys()))
     if st.button("🔍 분석 시작", type="primary", use_container_width=True):
         run_analysis([(selected, [], 0)])
