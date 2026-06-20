@@ -20,8 +20,8 @@ if hasattr(st, "secrets") and "NAVER_CLIENT_ID" in st.secrets:
     os.environ["NAVER_CLIENT_ID"] = st.secrets["NAVER_CLIENT_ID"]
     os.environ["NAVER_CLIENT_SECRET"] = st.secrets["NAVER_CLIENT_SECRET"]
 
-from news.theme import detect_hot_sectors
-from data.sectors import get_chain, SECTOR_QUERIES
+from news.theme import detect_hot_sectors, SECTOR_QUERIES
+from data.sectors import get_chain
 from data.realdata import YfinanceDataProvider
 from analysis.shovel import ShovelDetector
 from analysis.maturity import MaturityClassifier
