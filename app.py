@@ -58,10 +58,12 @@ from news.collector import fetch_stock_news, search_news
 from data.sectors import get_chain
 from data.realdata import YfinanceDataProvider
 from data.etf import SECTOR_ETFS, STOCK_ETFS, EtfInfo
-from data.commodities import fetch_commodity_prices, fetch_index_prices
+from data.commodities import (fetch_commodity_prices, fetch_index_prices,
+                               COMMODITY_INFO)
 from analysis.shovel import ShovelDetector
 from analysis.maturity import MaturityClassifier
 from analysis.verdict import make_verdict
+from analysis.scenario import SCENARIOS
 
 KST = timezone(timedelta(hours=9))
 
@@ -415,7 +417,7 @@ def _get_commodity_prices():
 
 def render_commodity_widget():
     with st.expander("🪨 원자재·광물 실시간 가격", expanded=False):
-        st.caption("출처: Yahoo Finance | 15분 지연 | USD 기준")
+        st.caption("출처: Yahoo Finance | 15분 지연 | 가격은 USD, 괄호는 원화 환산")
         prices = _get_commodity_prices()
         if not prices:
             st.caption("데이터 없음")
@@ -423,10 +425,10 @@ def render_commodity_widget():
         cols = st.columns(3)
         for i, p in enumerate(prices):
             with cols[i % 3]:
+                st.markdown(f"**{p.name}**")
                 if p.price > 0:
                     color = "buy" if p.chg_pct > 0 else ("sell" if p.chg_pct < 0 else "")
                     arrow = "▲" if p.chg_pct > 0 else ("▼" if p.chg_pct < 0 else "-")
-                    st.markdown(f"**{p.name}**")
                     if color:
                         st.markdown(
                             f'<span class="{color}">{p.price:,.2f} {p.unit} '
@@ -435,10 +437,92 @@ def render_commodity_widget():
                         )
                     else:
                         st.write(f"{p.price:,.2f} {p.unit}")
+                    # 원화 환산 (USD/KRW 자체는 제외)
+                    if p.price_krw and p.name != "USD/KRW":
+                        krw_unit = p.unit.replace("USD", "원")
+                        st.caption(f"≈ {p.price_krw:,.0f} {krw_unit}")
+                    # 설명 버튼
+                    info = COMMODITY_INFO.get(p.name)
+                    if info:
+                        with st.popover("ℹ️ 설명", use_container_width=True):
+                            st.markdown(f"#### {p.name}")
+                            st.markdown(info)
                 else:
-                    st.markdown(f"**{p.name}**")
                     st.caption("조회 실패")
-        st.caption(f"수집: {prices[0].fetched_at if prices else '-'}")
+        st.caption(f"수집: {prices[0].fetched_at if prices else '-'}  "
+                   f"※ 원화 환산은 현재 USD/KRW 환율 기준 참고치")
+
+
+# ── 세상 상황 → 수혜 섹터 시나리오 ───────────────────────────────────────
+@st.cache_data(ttl=120)
+def _indicator_lookup():
+    """현재 지수·원자재 값을 이름→(값,등락%) dict로."""
+    out = {}
+    for p in fetch_index_prices() + fetch_commodity_prices():
+        out[p.name] = (p.price, p.chg_pct, p.unit)
+    return out
+
+
+@st.cache_data(ttl=1800)
+def _scenario_news(query: str):
+    try:
+        return search_news(query, display=4)
+    except Exception:
+        return []
+
+
+def render_scenario_widget():
+    """거시 상황별 수혜/피해 섹터 + 현재 지표 + 관련 뉴스."""
+    with st.expander("🌍 세상 상황별 수혜 섹터 (시나리오 분석)", expanded=False):
+        st.caption("거시 상황이 바뀌면 어디가 뜨는지 — 과거 인과 패턴 기반 참고 자료. "
+                   "예측이 아님.")
+        titles = [s.title for s in SCENARIOS]
+        picked = st.selectbox("상황 선택", titles, key="scenario_pick")
+        sc = next((s for s in SCENARIOS if s.title == picked), None)
+        if sc is None:
+            return
+
+        st.info(sc.summary)
+
+        # 현재 관련 경제지표 실시간 표시
+        ind = _indicator_lookup()
+        watch = [n for n in sc.watch_indicators if n in ind]
+        if watch:
+            st.markdown("**📊 지금 확인할 지표**")
+            cols = st.columns(len(watch))
+            for col, name in zip(cols, watch):
+                price, chg, unit = ind[name]
+                arrow = "▲" if chg > 0 else ("▼" if chg < 0 else "")
+                val = f"{price:,.1f}" if unit == "pt" else f"{price:,.2f}"
+                col.metric(name, val, f"{arrow}{chg:+.2f}%")
+
+        # 수혜 / 피해 섹터
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**🟢 수혜 섹터**")
+            for sector, why in sc.winners:
+                st.markdown(f"- **{sector}** — {why}")
+        with c2:
+            st.markdown("**🔴 부담 섹터**")
+            if sc.losers:
+                for sector, why in sc.losers:
+                    st.markdown(f"- **{sector}** — {why}")
+            else:
+                st.caption("뚜렷한 피해 섹터 없음")
+
+        st.caption("→ '섹터 직접 선택'에서 위 섹터를 골라 종목 단위로 분석할 수 있어요.")
+
+        # 관련 뉴스
+        st.divider()
+        st.markdown("**📰 관련 최신 뉴스**")
+        news = _scenario_news(sc.news_query)
+        if not news:
+            st.caption("관련 뉴스 없음")
+        else:
+            for it in news:
+                st.markdown(f"- [{it.title}]({it.link})" if it.link
+                            else f"- {it.title}")
+            st.caption(f'출처: 네이버 뉴스 | 검색어: "{sc.news_query}"')
 
 
 # ── 수주·계약 분석 탭 ────────────────────────────────────────────────────
@@ -794,6 +878,9 @@ st.divider()
 mode = st.radio("분석 방식", ["🔥 뉴스 기반 자동 감지", "📂 섹터 직접 선택"], horizontal=True)
 
 if mode == "🔥 뉴스 기반 자동 감지":
+    # 세상 상황 → 수혜 섹터 시나리오 창
+    render_scenario_widget()
+
     st.caption("🔥 핫한 섹터 5개(지금 주목) + 🛡️ 안정 섹터 5개(경기방어)를 나눠서 보여줍니다.")
     group = st.radio("분석할 그룹", ["🔥 핫한 섹터", "🛡️ 안정 섹터", "둘 다"],
                      horizontal=True)
