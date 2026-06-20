@@ -95,6 +95,11 @@ def search_news_with_total(query: str, display: int = 5) -> tuple[list[NewsItem]
     return items, total
 
 
+def fetch_stock_news(company_name: str, display: int = 8) -> list[NewsItem]:
+    """종목명으로 최근 뉴스 검색 (종목 카드 뉴스 탭용)."""
+    return search_news(f"{company_name} 주가", display=display)
+
+
 def _strip_tags(text: str) -> str:
     """HTML 태그 제거."""
     import re
