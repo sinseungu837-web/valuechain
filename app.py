@@ -500,49 +500,49 @@ def render_sector_etfs(sector_name: str):
 
 
 # ── 종목 카드 ────────────────────────────────────────────────────────────
+CONF_RANK = {"높음": 3, "중간": 2, "낮음": 1}
+CONF_STARS = {"높음": "★★★", "중간": "★★☆", "낮음": "★☆☆"}
+
+
+def _render_card_detail(v, real_data):
+    """확장된 종목 상세 (펼쳤을 때 내용)."""
+    # 핵심 수치 한 줄
+    m = v.metrics
+    cols = st.columns(4)
+    cols[0].metric("매출성장",  m["매출성장"])
+    cols[1].metric("영익률",    m["영업이익률"])
+    cols[2].metric("PER",       m["PER"])
+    cols[3].metric("1년수익률", m["1년수익률"])
+
+    # 판정 요약
+    st.info(v.reasons[-1], icon="💡")
+
+    # 탭: 지표 / 수주분석 / 뉴스 / ETF
+    tab_metric, tab_contract, tab_news, tab_etf = st.tabs([
+        "📊 지표 상세", "🏗️ 수주·계약", "📰 관련 뉴스", "📦 ETF 편입"
+    ])
+    with tab_metric:
+        _render_metrics_tab(v, real_data)
+    with tab_contract:
+        biz_model = v.metrics.get("biz_model", "혼합")
+        _render_contract_tab(v.code, v.name, biz_model)
+    with tab_news:
+        _render_news_tab(v.name)
+    with tab_etf:
+        _render_etf_tab(v.code)
+
+
 def render_verdict_card(v, real_data, action_css: str, action_label: str):
-    with st.container(border=True):
-        # 헤더
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            st.markdown(f"**{v.name}**  `{v.code}`")
-            st.caption(f"확신: {v.confidence}")
-        with c2:
-            st.markdown(f'<span class="{action_css}">{action_label}</span>',
-                        unsafe_allow_html=True)
-
-        # 핵심 수치 한 줄
-        m = v.metrics
-        cols = st.columns(4)
-        cols[0].metric("매출성장",  m["매출성장"])
-        cols[1].metric("영익률",    m["영업이익률"])
-        cols[2].metric("PER",       m["PER"])
-        cols[3].metric("1년수익률", m["1년수익률"])
-
-        # 판정 요약
-        st.info(v.reasons[-1], icon="💡")
-
-        # 탭: 지표 / 수주분석 / 뉴스 / ETF
-        tab_metric, tab_contract, tab_news, tab_etf = st.tabs([
-            "📊 지표 상세", "🏗️ 수주·계약", "📰 관련 뉴스", "📦 ETF 편입"
-        ])
-        with tab_metric:
-            _render_metrics_tab(v, real_data)
-        with tab_contract:
-            # biz_model은 ValueChain 그래프 노드에서 조회
-            biz_model = "혼합"
-            try:
-                from data.sectors import get_chain as _gc
-                # chain은 run_analysis 컨텍스트에 없으므로 노드 데이터 직접 조회 불가
-                # Verdict.metrics에 biz_model을 담아 전달하는 방식 사용
-                biz_model = v.metrics.get("biz_model", "혼합")
-            except Exception:
-                pass
-            _render_contract_tab(v.code, v.name, biz_model)
-        with tab_news:
-            _render_news_tab(v.name)
-        with tab_etf:
-            _render_etf_tab(v.code)
+    """셀(요약 행) + 클릭 시 펼쳐지는 상세."""
+    m = v.metrics
+    stars = CONF_STARS.get(v.confidence, "")
+    # expander 라벨 = 한 줄 요약 셀
+    label = (f"{action_label}  {stars} {v.confidence}  |  "
+             f"{v.name} ({v.code})  |  "
+             f"매출 {m['매출성장']} · 영익 {m['영업이익률']} · "
+             f"1년 {m['1년수익률']}")
+    with st.expander(label, expanded=False):
+        _render_card_detail(v, real_data)
 
 
 # ── 섹터 분석 실행 ───────────────────────────────────────────────────────
@@ -596,26 +596,33 @@ def run_analysis(sectors: list):
             vrd.metrics["biz_model"] = biz_model_map.get(s.code, "혼합")
             verdicts.append((vrd, d))
 
-        buy_list  = [(v, d) for v, d in verdicts if v.action == "BUY"]
-        hold_list = [(v, d) for v, d in verdicts if v.action == "HOLD"]
-        sell_list = [(v, d) for v, d in verdicts if v.action in ("SELL", "AVOID")]
+        # 확신 강도순 정렬 (높음 → 중간 → 낮음)
+        def _conf_key(item):
+            return CONF_RANK.get(item[0].confidence, 0)
+
+        buy_list  = sorted([(v, d) for v, d in verdicts if v.action == "BUY"],
+                           key=_conf_key, reverse=True)
+        hold_list = sorted([(v, d) for v, d in verdicts if v.action == "HOLD"],
+                           key=_conf_key, reverse=True)
+        sell_list = sorted([(v, d) for v, d in verdicts if v.action in ("SELL", "AVOID")],
+                           key=_conf_key, reverse=True)
 
         if buy_list:
-            st.markdown("### ✅ BUY 추천")
+            st.markdown(f"### ✅ BUY 추천 ({len(buy_list)}종목) — 확신 강한 순")
+            st.caption("종목 셀을 누르면 지표·수주·뉴스·ETF 상세가 펼쳐집니다.")
             for v, d in buy_list:
-                render_verdict_card(v, d, "buy", "▲ BUY")
+                render_verdict_card(v, d, "▲ BUY", "▲ BUY")
 
         if hold_list:
-            st.markdown("### ➖ HOLD")
+            st.markdown(f"### ➖ HOLD ({len(hold_list)}종목) — 확신 강한 순")
             for v, d in hold_list:
-                render_verdict_card(v, d, "hold", "- HOLD")
+                render_verdict_card(v, d, "- HOLD", "- HOLD")
 
         if sell_list:
-            st.markdown("### ❌ SELL / AVOID")
+            st.markdown(f"### ❌ SELL / AVOID ({len(sell_list)}종목) — 확신 강한 순")
             for v, d in sell_list:
                 label = "▼ SELL" if v.action == "SELL" else "× AVOID"
-                css   = "sell"  if v.action == "SELL" else "avoid"
-                render_verdict_card(v, d, css, label)
+                render_verdict_card(v, d, label, label)
 
         # 섹터 관련 ETF 추천 블록
         render_sector_etfs(sector_name)
