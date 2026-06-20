@@ -23,10 +23,11 @@ if hasattr(st, "secrets") and "NAVER_CLIENT_ID" in st.secrets:
     os.environ["NAVER_CLIENT_SECRET"] = st.secrets["NAVER_CLIENT_SECRET"]
 
 from news.theme import detect_hot_sectors, SECTOR_QUERIES
-from news.collector import fetch_stock_news
+from news.collector import fetch_stock_news, search_news
 from data.sectors import get_chain
 from data.realdata import YfinanceDataProvider
 from data.etf import SECTOR_ETFS, STOCK_ETFS, EtfInfo
+from data.commodities import fetch_commodity_prices
 from analysis.shovel import ShovelDetector
 from analysis.maturity import MaturityClassifier
 from analysis.verdict import make_verdict
@@ -258,6 +259,141 @@ def _render_news_tab(company_name: str):
         st.warning(f"뉴스 로드 실패: {e}")
 
 
+# ── 광물·원자재 가격 위젯 ────────────────────────────────────────────────
+@st.cache_data(ttl=300)
+def _get_commodity_prices():
+    return fetch_commodity_prices()
+
+
+def render_commodity_widget():
+    with st.expander("🪨 원자재·광물 실시간 가격", expanded=False):
+        st.caption("출처: Yahoo Finance | 15분 지연 | USD 기준")
+        prices = _get_commodity_prices()
+        if not prices:
+            st.caption("데이터 없음")
+            return
+        cols = st.columns(3)
+        for i, p in enumerate(prices):
+            with cols[i % 3]:
+                if p.price > 0:
+                    color = "buy" if p.chg_pct > 0 else ("sell" if p.chg_pct < 0 else "")
+                    arrow = "▲" if p.chg_pct > 0 else ("▼" if p.chg_pct < 0 else "-")
+                    st.markdown(f"**{p.name}**")
+                    if color:
+                        st.markdown(
+                            f'<span class="{color}">{p.price:,.2f} {p.unit} '
+                            f'{arrow}{abs(p.chg_pct):.2f}%</span>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.write(f"{p.price:,.2f} {p.unit}")
+                else:
+                    st.markdown(f"**{p.name}**")
+                    st.caption("조회 실패")
+        st.caption(f"수집: {prices[0].fetched_at if prices else '-'}")
+
+
+# ── 수주·계약 분석 탭 ────────────────────────────────────────────────────
+BIZ_MODEL_DESC = {
+    "B2B수주": ("🏗️ B2B 수주형", "프로젝트/계약 기반 매출. 수주잔고로 미래 매출 예측 가능"),
+    "B2B납품": ("🔩 B2B 납품형", "기업 간 정기 납품 계약. 고객사 성장에 연동"),
+    "B2C":     ("🛒 B2C 소비자형", "소비자 직접 판매. 브랜드·경기 민감"),
+    "혼합":    ("🔀 혼합형", "B2B+B2C 또는 시장가 판매 혼재"),
+}
+
+@st.cache_data(ttl=1800)
+def _fetch_contract_news(company_name: str, biz_model: str) -> list:
+    """수주/계약 관련 뉴스 검색."""
+    if biz_model in ("B2B수주", "B2B납품"):
+        queries = [f"{company_name} 수주", f"{company_name} 계약 체결"]
+    else:
+        queries = [f"{company_name} 실적", f"{company_name} 매출"]
+    items = []
+    for q in queries:
+        try:
+            got = search_news(q, display=4)
+            items.extend(got)
+        except Exception:
+            pass
+    seen = set()
+    unique = []
+    for it in items:
+        if it.title not in seen:
+            seen.add(it.title)
+            unique.append(it)
+    return unique[:8]
+
+
+def _render_contract_tab(code: str, name: str, biz_model: str):
+    """수주·계약 분석 탭."""
+    label, desc = BIZ_MODEL_DESC.get(biz_model, ("❓ 미분류", ""))
+
+    st.markdown(f"### {label}")
+    st.info(desc, icon="ℹ️")
+
+    # 수익 구조 설명
+    if biz_model == "B2B수주":
+        st.markdown("""
+**수주형 기업 체크리스트**
+- ✅ 수주잔고(Order Backlog) 규모 → 확정 미래 매출
+- ✅ 수주 취소율 → 리스크 지표
+- ✅ 신규 수주 증가율 → 성장 신호
+- ⚠️ 수주 집중도 → 특정 고객 과의존 리스크
+""")
+    elif biz_model == "B2B납품":
+        st.markdown("""
+**납품형 기업 체크리스트**
+- ✅ 장기 공급 계약 체결 여부
+- ✅ 고객사 다변화 (특정사 집중 리스크)
+- ✅ 단가 협상력 (소재→완성품 전가 가능 여부)
+- ⚠️ 재고 리스크 → 고객사 재고 조정 시 납품 감소
+""")
+    elif biz_model == "B2C":
+        st.markdown("""
+**소비자형 기업 체크리스트**
+- ✅ 브랜드 인지도 / 재구매율
+- ✅ MAU·WAU 등 사용자 지표 (게임·플랫폼)
+- ✅ 경기 민감도 → 경기방어주 여부
+- ⚠️ 경쟁 심화 → 마케팅비 증가 여부
+""")
+    else:
+        st.markdown("""
+**혼합형 기업 체크리스트**
+- ✅ 수익원 분산 구조 확인
+- ✅ 시장가 연동 비율 (원자재·철강 등)
+- ✅ 자회사/사업부별 기여도
+""")
+
+    st.divider()
+    st.markdown("##### 최근 수주·계약 뉴스")
+    with st.spinner("계약·수주 뉴스 검색 중..."):
+        news_items = _fetch_contract_news(name, biz_model)
+
+    if not news_items:
+        st.caption("관련 뉴스 없음")
+        return
+
+    fetched_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
+    st.markdown(
+        f'<span class="source-tag">출처: 네이버 뉴스 | 수집: {fetched_at}</span>',
+        unsafe_allow_html=True,
+    )
+    for item in news_items:
+        st.markdown(f"**{item.title}**")
+        if item.description:
+            st.caption(item.description[:100] + "..." if len(item.description) > 100 else item.description)
+        if item.pub_date:
+            try:
+                from email.utils import parsedate_to_datetime
+                dt = parsedate_to_datetime(item.pub_date)
+                st.caption(f"🕐 {dt.strftime('%Y-%m-%d %H:%M')}")
+            except Exception:
+                st.caption(f"🕐 {item.pub_date[:16]}")
+        if item.link:
+            st.markdown(f"[기사 원문 →]({item.link})")
+        st.divider()
+
+
 # ── ETF 성능 조회 ────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600)
 def fetch_etf_performance(code: str) -> dict:
@@ -386,10 +522,23 @@ def render_verdict_card(v, real_data, action_css: str, action_label: str):
         # 판정 요약
         st.info(v.reasons[-1], icon="💡")
 
-        # 📊 지표 / 📰 뉴스 / 📦 ETF 탭
-        tab_metric, tab_news, tab_etf = st.tabs(["📊 지표 상세", "📰 관련 뉴스", "📦 ETF 편입"])
+        # 탭: 지표 / 수주분석 / 뉴스 / ETF
+        tab_metric, tab_contract, tab_news, tab_etf = st.tabs([
+            "📊 지표 상세", "🏗️ 수주·계약", "📰 관련 뉴스", "📦 ETF 편입"
+        ])
         with tab_metric:
             _render_metrics_tab(v, real_data)
+        with tab_contract:
+            # biz_model은 ValueChain 그래프 노드에서 조회
+            biz_model = "혼합"
+            try:
+                from data.sectors import get_chain as _gc
+                # chain은 run_analysis 컨텍스트에 없으므로 노드 데이터 직접 조회 불가
+                # Verdict.metrics에 biz_model을 담아 전달하는 방식 사용
+                biz_model = v.metrics.get("biz_model", "혼합")
+            except Exception:
+                pass
+            _render_contract_tab(v.code, v.name, biz_model)
         with tab_news:
             _render_news_tab(v.name)
         with tab_etf:
@@ -431,13 +580,21 @@ def run_analysis(sectors: list):
         fin_map = {c: d.financials for c, d in all_data.items()}
         scores  = det.rank(fin_map)
 
+        # 종목별 biz_model 추출
+        biz_model_map = {
+            code: vc.g.nodes[code].get("biz_model", "혼합")
+            for code in vc.g.nodes()
+        }
+
         verdicts = []
         for s in scores:
             d = all_data.get(s.code)
             if not d:
                 continue
             classified = clf.classify(s, d.market_signals)
-            verdicts.append((make_verdict(classified, s, d.market_signals, d), d))
+            vrd = make_verdict(classified, s, d.market_signals, d)
+            vrd.metrics["biz_model"] = biz_model_map.get(s.code, "혼합")
+            verdicts.append((vrd, d))
 
         buy_list  = [(v, d) for v, d in verdicts if v.action == "BUY"]
         hold_list = [(v, d) for v, d in verdicts if v.action == "HOLD"]
@@ -472,16 +629,21 @@ market_status = "🟢 장중 (60초 자동 갱신)" if _is_market_hours() else "
 st.caption(f"{now_kst.strftime('%Y-%m-%d %H:%M KST')}  {market_status}")
 st.caption("※ 투자 자문 아님. 후보 추리기 참고 자료.")
 
+# 원자재 가격 상단 위젯
+render_commodity_widget()
+
 st.divider()
 mode = st.radio("분석 방식", ["🔥 뉴스 기반 자동 감지", "📂 섹터 직접 선택"], horizontal=True)
 
 if mode == "🔥 뉴스 기반 자동 감지":
-    top_n = st.slider("분석할 섹터 수", 1, 4, 2)
+    top_n = st.slider("분석할 섹터 수", 1, 5, 2)
     if st.button("🔍 분석 시작", type="primary", use_container_width=True):
         with st.spinner("뉴스 수집 중..."):
             hot = detect_hot_sectors(top_n=top_n)
         run_analysis([(h.sector, h.top_headlines, h.heat) for h in hot])
 else:
-    selected = st.selectbox("섹터 선택", list(SECTOR_QUERIES.keys()))
+    from news.theme import SECTOR_QUERIES as _SQ
+    all_sectors = list(_SQ.keys())
+    selected = st.selectbox("섹터 선택", all_sectors)
     if st.button("🔍 분석 시작", type="primary", use_container_width=True):
         run_analysis([(selected, [], 0)])

@@ -26,6 +26,11 @@ class Company:
     name: str
     tier: str               # 밸류체인 단계: 소재/장비/파운드리/팹리스/세트 등
     technologies: list[str] = field(default_factory=list)  # 핵심 기술 태그
+    biz_model: str = "혼합"
+    # B2B수주   : 프로젝트 계약 기반 (방산·조선·건설·반도체장비)
+    # B2B납품   : 기업 간 정기 납품 (부품소재·전자부품·배터리소재)
+    # B2C       : 소비자 직접 판매 (소비재·게임·외식·유통)
+    # 혼합      : B2B+B2C 또는 시장가 판매 (자동차·철강·무역)
 
 
 class ValueChain:
