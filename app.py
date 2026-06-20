@@ -58,7 +58,7 @@ from news.collector import fetch_stock_news, search_news
 from data.sectors import get_chain
 from data.realdata import YfinanceDataProvider
 from data.etf import SECTOR_ETFS, STOCK_ETFS, EtfInfo
-from data.commodities import fetch_commodity_prices
+from data.commodities import fetch_commodity_prices, fetch_index_prices
 from analysis.shovel import ShovelDetector
 from analysis.maturity import MaturityClassifier
 from analysis.verdict import make_verdict
@@ -288,6 +288,34 @@ def _render_news_tab(company_name: str):
             st.divider()
     except Exception as e:
         st.warning(f"뉴스 로드 실패: {e}")
+
+
+# ── 증시 지수·환율 위젯 (상단 자동 표시) ─────────────────────────────────
+@st.cache_data(ttl=120)
+def _get_index_prices():
+    return fetch_index_prices()
+
+
+def render_index_bar():
+    """코스피·코스닥·나스닥·S&P500·환율 상단 자동 표시."""
+    indices = _get_index_prices()
+    if not indices:
+        return
+    cols = st.columns(len(indices))
+    for col, p in zip(cols, indices):
+        with col:
+            if p.price > 0:
+                arrow = "▲" if p.chg_pct > 0 else ("▼" if p.chg_pct < 0 else "")
+                # 지수는 소수1자리, 환율은 정수
+                val = f"{p.price:,.1f}" if p.unit == "pt" else f"{p.price:,.0f}"
+                st.metric(
+                    p.name,
+                    val,
+                    f"{arrow}{p.chg_pct:+.2f}%",
+                )
+            else:
+                st.metric(p.name, "조회실패")
+    st.caption(f"출처: Yahoo Finance (지연) | 수집: {indices[0].fetched_at} | 2분마다 갱신")
 
 
 # ── 광물·원자재 가격 위젯 ────────────────────────────────────────────────
@@ -666,6 +694,9 @@ now_kst = datetime.now(KST)
 market_status = "🟢 장중 (60초 자동 갱신)" if _is_market_hours() else "🔴 장 마감"
 st.caption(f"{now_kst.strftime('%Y-%m-%d %H:%M KST')}  {market_status}")
 st.caption("※ 투자 자문 아님. 후보 추리기 참고 자료.")
+
+# 증시 지수·환율 상단 자동 표시
+render_index_bar()
 
 # 원자재 가격 상단 위젯
 render_commodity_widget()

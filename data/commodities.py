@@ -21,6 +21,17 @@ COMMODITY_MAP = {
 }
 
 
+# 주요 증시 지수 + 환율 (상단 자동 표시용)
+INDEX_MAP = {
+    "코스피":    ("^KS11",  "pt"),
+    "코스닥":    ("^KQ11",  "pt"),
+    "나스닥":    ("^IXIC",  "pt"),
+    "S&P500":    ("^GSPC",  "pt"),
+    "원/달러":   ("KRW=X",  "원"),
+    "원/엔(100)":("JPYKRW=X","원"),
+}
+
+
 @dataclass
 class CommodityPrice:
     name: str
@@ -29,6 +40,35 @@ class CommodityPrice:
     price: float
     chg_pct: float    # 전일 대비 %
     fetched_at: str
+
+
+def fetch_index_prices() -> list[CommodityPrice]:
+    """코스피·코스닥·나스닥·S&P500 지수 + 환율 조회."""
+    import yfinance as yf
+    results = []
+    for name, (symbol, unit) in INDEX_MAP.items():
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                t = yf.Ticker(symbol)
+            info = t.info
+            price = (info.get("regularMarketPrice")
+                     or info.get("currentPrice")
+                     or info.get("previousClose", 0))
+            prev  = info.get("previousClose") or price
+            # 원/엔은 100엔 기준으로 환산
+            if name == "원/엔(100)" and price:
+                price *= 100
+                prev  *= 100
+            chg_p = (price - prev) / prev * 100 if prev else 0
+            results.append(CommodityPrice(
+                name=name, symbol=symbol, unit=unit,
+                price=price, chg_pct=round(chg_p, 2),
+                fetched_at=datetime.now(KST).strftime("%H:%M KST"),
+            ))
+        except Exception:
+            results.append(CommodityPrice(name, symbol, unit, 0, 0, "-"))
+    return results
 
 
 def fetch_commodity_prices() -> list[CommodityPrice]:
