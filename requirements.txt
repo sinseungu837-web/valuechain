@@ -4,3 +4,4 @@ networkx>=3.0
 pykrx>=1.0.45
 finance-datareader>=0.9.50
 streamlit-autorefresh>=1.0.1
+anthropic>=0.40.0

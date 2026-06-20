@@ -64,6 +64,7 @@ from analysis.shovel import ShovelDetector
 from analysis.maturity import MaturityClassifier
 from analysis.verdict import make_verdict
 from analysis.scenario import SCENARIOS
+from analysis import llm_analyst
 
 KST = timezone(timedelta(hours=9))
 
@@ -736,10 +737,64 @@ CONF_RANK = {"높음": 3, "중간": 2, "낮음": 1}
 CONF_STARS = {"높음": "★★★", "중간": "★★☆", "낮음": "★☆☆"}
 
 
+VAL_ICON = {"저평가": "🟢저평가", "적정": "⚪적정", "고평가": "🔴고평가"}
+TREND_ICON = {"상승우호": "📈상승우호", "중립": "➖중립", "하락부담": "📉하락부담"}
+
+
+def _render_ai_section(v, real_data):
+    """🤖 AI(Claude) 심층 분석 — 버튼 클릭 시 on-demand 호출."""
+    st.markdown("##### 🤖 AI 심층 분석 (Claude)")
+    if not llm_analyst.is_available():
+        st.caption("ℹ️ AI 분석은 ANTHROPIC_API_KEY 시크릿이 설정돼야 작동합니다. "
+                   "현재는 위의 규칙 기반 배지(밸류·추세)만 제공됩니다.")
+        return
+
+    state_key = f"ai_{v.code}"
+    if st.button("🤖 이 종목 AI로 분석하기", key=f"aibtn_{v.code}",
+                 use_container_width=True):
+        with st.spinner("Claude가 데이터·뉴스를 분석 중..."):
+            try:
+                titles = [it.title for it in fetch_stock_news(v.name, display=8)]
+            except Exception:
+                titles = []
+            res = llm_analyst.analyze_stock(v, real_data, titles)
+            st.session_state[state_key] = res if res is not None else "FAIL"
+
+    res = st.session_state.get(state_key)
+    if res is None:
+        return
+    if res == "FAIL":
+        st.warning("AI 분석에 실패했습니다 (API 오류 또는 응답 형식).")
+        return
+
+    c1, c2 = st.columns(2)
+    c1.metric("AI 밸류 판단", res.valuation)
+    c2.metric("AI 방향 판단", res.trend)
+    if res.summary:
+        st.info(res.summary, icon="🤖")
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        st.markdown("**🟢 상승 논거**")
+        for b in res.bull:
+            st.markdown(f"- {b}")
+    with cc2:
+        st.markdown("**🔴 하락/리스크**")
+        for b in res.bear:
+            st.markdown(f"- {b}")
+    st.caption("※ Claude 생성. 제공 데이터·뉴스 기반 참고용. 투자 자문 아님. "
+               "구체적 가격 예측이 아닌 방향 판단입니다.")
+
+
 def _render_card_detail(v, real_data):
     """확장된 종목 상세 (펼쳤을 때 내용)."""
-    # 핵심 수치 한 줄
     m = v.metrics
+
+    # 규칙 기반 배지 (밸류·추세) — 즉시 표시
+    bcols = st.columns(2)
+    bcols[0].metric("밸류 (규칙)", VAL_ICON.get(m.get("밸류", "적정"), m.get("밸류", "-")))
+    bcols[1].metric("추세 (규칙)", TREND_ICON.get(m.get("추세", "중립"), m.get("추세", "-")))
+
+    # 핵심 수치 한 줄
     cols = st.columns(4)
     cols[0].metric("매출성장",  m["매출성장"])
     cols[1].metric("영익률",    m["영업이익률"])
@@ -748,6 +803,10 @@ def _render_card_detail(v, real_data):
 
     # 판정 요약
     st.info(v.reasons[-1], icon="💡")
+
+    # AI 심층 분석 (on-demand)
+    _render_ai_section(v, real_data)
+    st.divider()
 
     # 탭: 지표 / 수주분석 / 뉴스 / ETF
     tab_metric, tab_contract, tab_news, tab_etf = st.tabs([
@@ -768,11 +827,13 @@ def render_verdict_card(v, real_data, action_css: str, action_label: str):
     """셀(요약 행) + 클릭 시 펼쳐지는 상세."""
     m = v.metrics
     stars = CONF_STARS.get(v.confidence, "")
-    # expander 라벨 = 한 줄 요약 셀
-    label = (f"{action_label}  {stars} {v.confidence}  |  "
+    val_b = VAL_ICON.get(m.get("밸류", ""), "")
+    trend_b = TREND_ICON.get(m.get("추세", ""), "")
+    # expander 라벨 = 한 줄 요약 셀 (밸류·추세 배지 포함)
+    label = (f"{action_label}  {stars}  |  "
              f"{v.name} ({v.code})  |  "
-             f"매출 {m['매출성장']} · 영익 {m['영업이익률']} · "
-             f"1년 {m['1년수익률']}")
+             f"{val_b} {trend_b}  |  "
+             f"매출 {m['매출성장']} · 1년 {m['1년수익률']}")
     with st.expander(label, expanded=False):
         _render_card_detail(v, real_data)
 

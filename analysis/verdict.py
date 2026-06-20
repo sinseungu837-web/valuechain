@@ -116,11 +116,58 @@ def make_verdict(classified: Classified,
         "1년수익률":  f"{ret_1y:+.0f}%",
         "곡괭이점수": f"{shovel_total:.3f}",
         "4분면":      q,
+        # 규칙 기반 배지 (셀 표시용)
+        "밸류":       valuation_badge(classified, sig),
+        "추세":       trend_badge(shovel, sig, real),
     }
 
     return Verdict(code=classified.code, name=classified.name,
                    action=action, confidence=confidence,
                    reasons=reasons, metrics=metrics)
+
+
+def valuation_badge(classified: Classified, sig: MarketSignals) -> str:
+    """저평가/적정/고평가 배지 (규칙 기반, 시장인식도 기반)."""
+    recog = classified.recognition
+    if recog >= 0.60:
+        return "고평가"
+    elif recog <= 0.35:
+        return "저평가"
+    else:
+        return "적정"
+
+
+def trend_badge(shovel: ShovelScore, sig: MarketSignals, real: CompanyRealData) -> str:
+    """
+    상승우호 / 중립 / 하락부담 추세 신호 (규칙 기반).
+
+    구체적 가격 예측이 아니라, 객관 지표가 어느 쪽으로 기울었는지 점수화.
+    - 펀더멘털(매출·영익 성장, 곡괭이 점수): 우호 가점
+    - 밸류 부담(고평가 + 이미 많이 오름): 부담 감점
+    """
+    f = real.financials
+    score = 0
+
+    # 펀더멘털 방향
+    if f.revenue_growth_yoy > 10:   score += 1
+    elif f.revenue_growth_yoy < 0:  score -= 1
+    if f.op_profit_growth_yoy > 10: score += 1
+    elif f.op_profit_growth_yoy < 0:score -= 1
+    if f.op_margin > 10:            score += 1
+    if shovel.financial_reality >= 0.5: score += 1
+    elif shovel.financial_reality < 0.2: score -= 1
+
+    # 밸류·모멘텀 부담
+    if sig.per and sig.per > 40:    score -= 1
+    if sig.price_return_1y > 80:    score -= 1   # 이미 과열
+    elif sig.price_return_1y < -30: score += 1   # 과도한 하락 → 반등 여지
+
+    if score >= 2:
+        return "상승우호"
+    elif score <= -2:
+        return "하락부담"
+    else:
+        return "중립"
 
 
 def _tier_desc(s: ShovelScore) -> str:
