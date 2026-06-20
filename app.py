@@ -53,7 +53,7 @@ def _check_password() -> bool:
 if not _check_password():
     st.stop()
 
-from news.theme import detect_hot_sectors, SECTOR_QUERIES
+from news.theme import detect_hot_sectors, detect_hot_and_stable, SECTOR_QUERIES
 from news.collector import fetch_stock_news, search_news
 from data.sectors import get_chain
 from data.realdata import YfinanceDataProvider
@@ -145,6 +145,48 @@ def render_price_ticker(code: str, name: str):
     )
 
 
+# ── 실시간(당일 분봉) 차트 ───────────────────────────────────────────────
+@st.cache_data(ttl=60)
+def fetch_intraday(code: str):
+    """당일 1분봉 시세 (장중 실시간 추이용, 60초 캐시)."""
+    import yfinance as yf
+    for suffix in [".KS", ".KQ"]:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            t = yf.Ticker(f"{code}{suffix}")
+        hist = t.history(period="1d", interval="1m")
+        if not hist.empty:
+            return hist, datetime.now(KST).strftime("%H:%M:%S KST")
+    return None, None
+
+
+def render_intraday_chart(code: str, name: str):
+    """장중 실시간 분봉 차트. st_autorefresh로 자동 갱신됨."""
+    hist, fetched = fetch_intraday(code)
+    if hist is None or hist.empty:
+        st.caption("당일 분봉 데이터 없음 (장 시작 전이거나 거래 없음)")
+        return
+    closes = hist["Close"]
+    cur   = closes.iloc[-1]
+    first = closes.iloc[0]
+    chg_p = (cur - first) / first * 100 if first else 0
+    css   = "price-up" if chg_p > 0 else ("price-down" if chg_p < 0 else "price-flat")
+    arrow = "▲" if chg_p > 0 else ("▼" if chg_p < 0 else "-")
+
+    st.markdown(
+        f'<span class="{css}">당일 {arrow} {chg_p:+.2f}% '
+        f'(시가 대비)</span>',
+        unsafe_allow_html=True,
+    )
+    st.line_chart(closes, height=180)
+    refresh_note = " · 60초 자동 갱신" if _is_market_hours() else ""
+    st.markdown(
+        f'<span class="source-tag">출처: Yahoo Finance 1분봉 | '
+        f'갱신: {fetched}{refresh_note}</span>',
+        unsafe_allow_html=True,
+    )
+
+
 # ── 다년도 재무 추이 차트 ────────────────────────────────────────────────
 @st.cache_data(ttl=3600)
 def fetch_financials_history(code: str):
@@ -193,6 +235,10 @@ def _render_metrics_tab(v, real_data):
     # 주식창 스타일 가격 티커
     st.markdown("##### 현재 시세")
     render_price_ticker(v.code, v.name)
+
+    # 실시간 당일 분봉 차트 (장중 자동 갱신)
+    st.markdown("##### 실시간 차트 (당일)")
+    render_intraday_chart(v.code, v.name)
     st.divider()
 
     # 핵심 재무 지표
@@ -705,11 +751,26 @@ st.divider()
 mode = st.radio("분석 방식", ["🔥 뉴스 기반 자동 감지", "📂 섹터 직접 선택"], horizontal=True)
 
 if mode == "🔥 뉴스 기반 자동 감지":
-    top_n = st.slider("분석할 섹터 수", 1, 5, 2)
+    st.caption("🔥 핫한 섹터 5개(지금 주목) + 🛡️ 안정 섹터 5개(경기방어)를 나눠서 보여줍니다.")
+    group = st.radio("분석할 그룹", ["🔥 핫한 섹터", "🛡️ 안정 섹터", "둘 다"],
+                     horizontal=True)
     if st.button("🔍 분석 시작", type="primary", use_container_width=True):
-        with st.spinner("뉴스 수집 중..."):
-            hot = detect_hot_sectors(top_n=top_n)
-        run_analysis([(h.sector, h.top_headlines, h.heat) for h in hot])
+        with st.spinner("뉴스 수집 중 (전체 섹터 측정)..."):
+            hot, stable = detect_hot_and_stable(hot_n=5, stable_n=5)
+
+        if group in ("🔥 핫한 섹터", "둘 다"):
+            st.header("🔥 핫한 섹터 (지금 시장이 주목)")
+            if hot:
+                run_analysis([(h.sector, h.top_headlines, h.heat) for h in hot])
+            else:
+                st.info("핫한 섹터를 찾지 못했습니다.")
+
+        if group in ("🛡️ 안정 섹터", "둘 다"):
+            st.header("🛡️ 안정 섹터 (경기방어·꾸준한 수요)")
+            if stable:
+                run_analysis([(s.sector, s.top_headlines, s.heat) for s in stable])
+            else:
+                st.info("안정 섹터 후보가 없습니다.")
 else:
     from news.theme import SECTOR_QUERIES as _SQ
     all_sectors = list(_SQ.keys())

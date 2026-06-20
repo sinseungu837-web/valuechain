@@ -44,6 +44,13 @@ SECTOR_QUERIES: dict[str, list[str]] = {
 }
 
 
+# 경기방어/안정 성격 섹터 (소비·필수재·금융 등 — 뉴스 변동성 작고 꾸준)
+DEFENSIVE_SECTORS = {
+    "생활소비재", "유통", "외식/식품", "의료기기",
+    "증권/금융", "지주사", "자동차", "철강",
+}
+
+
 @dataclass
 class SectorHeat:
     sector: str
@@ -51,11 +58,8 @@ class SectorHeat:
     top_headlines: list[str]   # 대표 헤드라인 3개
 
 
-def detect_hot_sectors(top_n: int = 3) -> list[SectorHeat]:
-    """
-    뉴스 기사 수 기준으로 가장 뜨거운 섹터 top_n개 반환.
-    각 섹터당 쿼리 묶음을 검색하고 기사 수를 합산.
-    """
+def _measure_all_sectors() -> list[SectorHeat]:
+    """전체 섹터의 뉴스 열기를 측정해 heat 내림차순 정렬 반환."""
     print("섹터 열기 측정 중 (네이버 뉴스)...")
     results: list[SectorHeat] = []
 
@@ -80,4 +84,28 @@ def detect_hot_sectors(top_n: int = 3) -> list[SectorHeat]:
         print(f"  {sector:8s}: 기사 {total}건")
 
     results.sort(key=lambda x: x.heat, reverse=True)
-    return results[:top_n]
+    return results
+
+
+def detect_hot_sectors(top_n: int = 3) -> list[SectorHeat]:
+    """뉴스 기사 수 기준 가장 뜨거운 섹터 top_n개."""
+    return _measure_all_sectors()[:top_n]
+
+
+def detect_hot_and_stable(hot_n: int = 5, stable_n: int = 5
+                          ) -> tuple[list[SectorHeat], list[SectorHeat]]:
+    """
+    핫한 섹터 hot_n개 + 안정(경기방어) 섹터 stable_n개를 나눠서 반환.
+
+    - 핫: 전체 섹터 중 뉴스 기사 수 상위 (시장이 지금 주목)
+    - 안정: DEFENSIVE_SECTORS(소비·필수재·금융 등) 중 뉴스 열기 순
+            → 경기 영향이 적고 꾸준한 수요가 있는 방어적 섹터
+    핫에 이미 포함된 섹터는 안정 목록에서 제외(중복 방지).
+    """
+    ranked = _measure_all_sectors()
+    hot = ranked[:hot_n]
+    hot_names = {s.sector for s in hot}
+
+    stable = [s for s in ranked
+              if s.sector in DEFENSIVE_SECTORS and s.sector not in hot_names]
+    return hot, stable[:stable_n]
