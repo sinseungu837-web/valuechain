@@ -26,6 +26,7 @@ from news.theme import detect_hot_sectors, SECTOR_QUERIES
 from news.collector import fetch_stock_news
 from data.sectors import get_chain
 from data.realdata import YfinanceDataProvider
+from data.etf import SECTOR_ETFS, STOCK_ETFS, EtfInfo
 from analysis.shovel import ShovelDetector
 from analysis.maturity import MaturityClassifier
 from analysis.verdict import make_verdict
@@ -257,6 +258,111 @@ def _render_news_tab(company_name: str):
         st.warning(f"뉴스 로드 실패: {e}")
 
 
+# ── ETF 성능 조회 ────────────────────────────────────────────────────────
+@st.cache_data(ttl=3600)
+def fetch_etf_performance(code: str) -> dict:
+    """ETF 현재가·1년수익률·시가총액 조회."""
+    import yfinance as yf
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            t = yf.Ticker(f"{code}.KS")
+        info = t.info
+        price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+        market_cap = info.get("marketCap") or 0
+
+        hist = t.history(period="1y")
+        ret_1y = 0.0
+        if len(hist) >= 2:
+            ret_1y = (hist["Close"].iloc[-1] / hist["Close"].iloc[0] - 1) * 100
+
+        return {
+            "price": price,
+            "ret_1y": round(ret_1y, 1),
+            "market_cap": market_cap,
+            "ok": price > 0,
+        }
+    except Exception:
+        return {"price": 0, "ret_1y": 0, "market_cap": 0, "ok": False}
+
+
+def _render_etf_tab(code: str):
+    """종목이 편입된 ETF 목록 탭."""
+    holdings = STOCK_ETFS.get(code, [])
+    if not holdings:
+        st.caption("ETF 편입 데이터 없음 (주요 지수 미편입 또는 데이터 미등록)")
+        return
+
+    st.caption("※ 편입 비율은 운용사 월간 공시 기준 추정치. 실제와 다를 수 있음.")
+    st.caption(f"출처: 각 자산운용사 포트폴리오 공시 (분기 갱신)")
+    st.divider()
+
+    for h in sorted(holdings, key=lambda x: x.weight_pct, reverse=True):
+        perf = fetch_etf_performance(h.etf_code)
+        with st.container(border=True):
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                st.markdown(f"**{h.etf_name}**")
+                st.caption(f"{h.provider}  |  {h.etf_code}")
+            with c2:
+                st.metric("편입 비율", f"{h.weight_pct:.1f}%")
+
+            if perf["ok"]:
+                col1, col2, col3 = st.columns(3)
+                col1.metric("현재가",    f"{perf['price']:,.0f}원")
+                col2.metric("1년 수익률", f"{perf['ret_1y']:+.1f}%")
+                col3.metric("규모",
+                    f"{perf['market_cap']/1e12:.1f}조" if perf["market_cap"] > 1e11
+                    else f"{perf['market_cap']/1e8:.0f}억")
+            else:
+                st.caption("시세 조회 실패")
+
+
+def render_sector_etfs(sector_name: str):
+    """섹터 분석 결과 하단 ETF 추천 블록."""
+    etf_list = SECTOR_ETFS.get(sector_name, [])
+    if not etf_list:
+        return
+
+    with st.expander(f"📦 {sector_name} 관련 ETF 추천", expanded=False):
+        st.caption("해당 섹터에 투자하는 주요 ETF 목록 (수익률 순 정렬)")
+        st.caption("출처: 각 자산운용사 공시 | 수익률: Yahoo Finance 1년 기준")
+        st.divider()
+
+        etf_rows = []
+        for etf in etf_list:
+            if "확인" in etf.code:   # 코드 미확정 항목 스킵
+                continue
+            perf = fetch_etf_performance(etf.code)
+            etf_rows.append((etf, perf))
+
+        # 1년 수익률 내림차순 정렬
+        etf_rows.sort(key=lambda x: x[1]["ret_1y"], reverse=True)
+
+        for etf, perf in etf_rows:
+            with st.container(border=True):
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    st.markdown(f"**{etf.name}**")
+                    st.caption(f"{etf.provider}  |  {etf.code}")
+                with c2:
+                    if perf["ok"]:
+                        color = "buy" if perf["ret_1y"] > 0 else "sell"
+                        st.markdown(
+                            f'<span class="{color}">{perf["ret_1y"]:+.1f}%</span>',
+                            unsafe_allow_html=True,
+                        )
+
+                if perf["ok"]:
+                    col1, col2 = st.columns(2)
+                    col1.metric("현재가", f"{perf['price']:,.0f}원")
+                    col2.metric("규모",
+                        f"{perf['market_cap']/1e12:.1f}조" if perf["market_cap"] > 1e11
+                        else f"{perf['market_cap']/1e8:.0f}억")
+                else:
+                    st.caption("시세 조회 실패")
+
+
 # ── 종목 카드 ────────────────────────────────────────────────────────────
 def render_verdict_card(v, real_data, action_css: str, action_label: str):
     with st.container(border=True):
@@ -280,12 +386,14 @@ def render_verdict_card(v, real_data, action_css: str, action_label: str):
         # 판정 요약
         st.info(v.reasons[-1], icon="💡")
 
-        # 📊 지표 / 📰 뉴스 탭
-        tab_metric, tab_news = st.tabs(["📊 지표 상세", "📰 관련 뉴스"])
+        # 📊 지표 / 📰 뉴스 / 📦 ETF 탭
+        tab_metric, tab_news, tab_etf = st.tabs(["📊 지표 상세", "📰 관련 뉴스", "📦 ETF 편입"])
         with tab_metric:
             _render_metrics_tab(v, real_data)
         with tab_news:
             _render_news_tab(v.name)
+        with tab_etf:
+            _render_etf_tab(v.code)
 
 
 # ── 섹터 분석 실행 ───────────────────────────────────────────────────────
@@ -351,6 +459,9 @@ def run_analysis(sectors: list):
                 label = "▼ SELL" if v.action == "SELL" else "× AVOID"
                 css   = "sell"  if v.action == "SELL" else "avoid"
                 render_verdict_card(v, d, css, label)
+
+        # 섹터 관련 ETF 추천 블록
+        render_sector_etfs(sector_name)
 
 
 # ── 메인 UI ─────────────────────────────────────────────────────────────
