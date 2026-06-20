@@ -22,6 +22,37 @@ if hasattr(st, "secrets") and "NAVER_CLIENT_ID" in st.secrets:
     os.environ["NAVER_CLIENT_ID"] = st.secrets["NAVER_CLIENT_ID"]
     os.environ["NAVER_CLIENT_SECRET"] = st.secrets["NAVER_CLIENT_SECRET"]
 
+
+# ── 접근 잠금 (본인 전용) ────────────────────────────────────────────────
+def _check_password() -> bool:
+    """
+    APP_PASSWORD 시크릿이 설정돼 있으면 비밀번호를 요구한다.
+    설정 안 돼 있으면(로컬 개발 등) 잠금 없이 통과.
+    공유·상용화 전까지 본인만 사용하기 위한 최소 보호 장치.
+    """
+    expected = None
+    if hasattr(st, "secrets") and "APP_PASSWORD" in st.secrets:
+        expected = st.secrets["APP_PASSWORD"]
+    if not expected:                       # 비번 미설정 → 잠금 해제
+        return True
+    if st.session_state.get("auth_ok"):    # 이미 인증됨
+        return True
+
+    st.title("🔒 ValueChain")
+    st.caption("본인 전용 앱입니다. 비밀번호를 입력하세요.")
+    pw = st.text_input("비밀번호", type="password")
+    if st.button("입장", use_container_width=True):
+        if pw == expected:
+            st.session_state["auth_ok"] = True
+            st.rerun()
+        else:
+            st.error("비밀번호가 틀렸습니다.")
+    return False
+
+
+if not _check_password():
+    st.stop()
+
 from news.theme import detect_hot_sectors, SECTOR_QUERIES
 from news.collector import fetch_stock_news, search_news
 from data.sectors import get_chain
