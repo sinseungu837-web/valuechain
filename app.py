@@ -342,25 +342,68 @@ def _get_index_prices():
     return fetch_index_prices()
 
 
+@st.cache_data(ttl=300)
+def fetch_index_history(symbol: str, period: str = "1mo", interval: str = "1d"):
+    """지수/환율 심볼의 히스토리 (팝오버 차트용)."""
+    import yfinance as yf
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        t = yf.Ticker(symbol)
+    hist = t.history(period=period, interval=interval)
+    if hist.empty:
+        return None
+    return hist["Close"]
+
+
+def _render_index_popover_chart(p):
+    """팝오버 안: 기간 선택 + 차트."""
+    st.markdown(f"### {p.name}")
+    val = f"{p.price:,.1f}" if p.unit == "pt" else f"{p.price:,.0f}"
+    arrow = "▲" if p.chg_pct > 0 else ("▼" if p.chg_pct < 0 else "-")
+    css = "price-up" if p.chg_pct > 0 else ("price-down" if p.chg_pct < 0 else "price-flat")
+    st.markdown(
+        f'<span class="{css}">{val} {p.unit} {arrow} {p.chg_pct:+.2f}%</span>',
+        unsafe_allow_html=True,
+    )
+
+    period_label = st.radio(
+        "기간", ["1일", "1개월", "1년"], horizontal=True,
+        key=f"idx_period_{p.symbol}",
+    )
+    cfg = {"1일": ("1d", "5m"), "1개월": ("1mo", "1d"), "1년": ("1y", "1wk")}
+    period, interval = cfg[period_label]
+
+    closes = fetch_index_history(p.symbol, period=period, interval=interval)
+    if closes is None or closes.empty:
+        st.caption("차트 데이터 없음")
+    else:
+        st.line_chart(closes, height=240)
+    st.caption("출처: Yahoo Finance (지연 시세)")
+
+
 def render_index_bar():
-    """코스피·코스닥·나스닥·S&P500·환율 상단 자동 표시."""
+    """코스피·코스닥·나스닥·S&P500·환율 2×3 그리드. 클릭 시 차트 팝오버."""
     indices = _get_index_prices()
     if not indices:
         return
-    cols = st.columns(len(indices))
-    for col, p in zip(cols, indices):
-        with col:
-            if p.price > 0:
-                arrow = "▲" if p.chg_pct > 0 else ("▼" if p.chg_pct < 0 else "")
-                # 지수는 소수1자리, 환율은 정수
-                val = f"{p.price:,.1f}" if p.unit == "pt" else f"{p.price:,.0f}"
-                st.metric(
-                    p.name,
-                    val,
-                    f"{arrow}{p.chg_pct:+.2f}%",
-                )
-            else:
-                st.metric(p.name, "조회실패")
+
+    # 3개씩 2줄로 배치
+    for row_start in range(0, len(indices), 3):
+        row = indices[row_start:row_start + 3]
+        cols = st.columns(3)
+        for col, p in zip(cols, row):
+            with col:
+                if p.price > 0:
+                    arrow = "▲" if p.chg_pct > 0 else ("▼" if p.chg_pct < 0 else "")
+                    val = f"{p.price:,.1f}" if p.unit == "pt" else f"{p.price:,.0f}"
+                    delta_css = "normal" if p.chg_pct >= 0 else "inverse"
+                    st.metric(p.name, val, f"{arrow}{p.chg_pct:+.2f}%")
+                    # 클릭하면 차트 팝오버
+                    with st.popover("📈 차트 보기", use_container_width=True):
+                        _render_index_popover_chart(p)
+                else:
+                    st.metric(p.name, "조회실패")
+
     st.caption(f"출처: Yahoo Finance (지연) | 수집: {indices[0].fetched_at} | 2분마다 갱신")
 
 
