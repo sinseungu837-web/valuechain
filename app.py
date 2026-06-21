@@ -50,8 +50,10 @@ def _check_password() -> bool:
     return False
 
 
-if not _check_password():
-    st.stop()
+# 현재는 링크만 있으면 누구나 접근 가능(잠금 비활성).
+# 나중에 본인 전용으로 되돌리려면 아래 두 줄의 주석을 해제:
+# if not _check_password():
+#     st.stop()
 
 from news.theme import detect_hot_sectors, detect_hot_and_stable, SECTOR_QUERIES
 from news.collector import fetch_stock_news, search_news
