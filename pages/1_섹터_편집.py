@@ -15,6 +15,17 @@ import streamlit as st
 from data.sector_store import (
     list_sectors, load_sector, save_sector, empty_sector,
 )
+from data.market_sectors import get_industries, stocks_in_industry
+
+
+@st.cache_data(ttl=3600)
+def _industries():
+    return get_industries()
+
+
+@st.cache_data(ttl=3600)
+def _stocks(industry: str):
+    return stocks_in_industry(industry)
 
 st.set_page_config(page_title="섹터 편집", page_icon="🛠️", layout="centered")
 
@@ -34,8 +45,15 @@ pick = st.selectbox("섹터", options)
 col_a, col_b = st.columns(2)
 with col_a:
     if pick == "➕ 새 섹터 만들기":
-        new_name = st.text_input("새 섹터 이름", placeholder="예: 로봇")
-        if st.button("만들기", use_container_width=True) and new_name.strip():
+        st.caption("증권 시장 공식 업종에서 선택하거나, 직접 이름을 입력하세요.")
+        src = st.radio("이름 정하기", ["시장 업종에서 선택", "직접 입력"],
+                       horizontal=True, key="namesrc")
+        if src == "시장 업종에서 선택":
+            inds = _industries()
+            new_name = st.selectbox("시장 업종", inds)
+        else:
+            new_name = st.text_input("새 섹터 이름", placeholder="예: 로봇")
+        if st.button("만들기", use_container_width=True) and (new_name or "").strip():
             st.session_state[WORK_KEY] = empty_sector(new_name.strip())
             st.rerun()
     else:
@@ -78,9 +96,45 @@ st.divider()
 
 # ── 종목 추가 + 기능블록 분류 ────────────────────────────────────────────
 st.header("3. 종목 추가 + 기능블록 분류")
+
+# 3-0. 시장 업종에서 구성 종목 자동 불러오기
+with st.expander("📥 시장 업종에서 종목 자동 불러오기"):
+    st.caption("거래소 업종을 고르면 그 업종 종목을 후보로 보여줍니다. "
+               "체크해서 한 번에 추가하세요 (기능블록은 추가 후 개별 지정).")
+    inds = _industries()
+    # 현재 섹터명이 업종 목록에 있으면 기본 선택
+    default_idx = inds.index(data["sector"]) if data["sector"] in inds else 0
+    chosen_ind = st.selectbox("업종 선택", inds, index=default_idx, key="bulk_ind")
+    cand = _stocks(chosen_ind)
+    if not cand:
+        st.caption("해당 업종 종목을 불러오지 못했습니다 (서버 문제 또는 빈 업종).")
+    else:
+        existing_codes = {str(c["code"]) for c in data["companies"]}
+        labels, code_map = [], {}
+        for s in cand[:60]:
+            lab = f"{s['name']} ({s['code']}) {s['market']}"
+            labels.append(lab)
+            code_map[lab] = s
+        picked = st.multiselect(f"{chosen_ind} 종목 ({len(cand)}개 중)", labels)
+        if st.button("선택 종목 일괄 추가", use_container_width=True):
+            added = 0
+            for lab in picked:
+                s = code_map[lab]
+                if str(s["code"]) in existing_codes:
+                    continue
+                data["companies"].append({
+                    "code": str(s["code"]), "name": s["name"],
+                    "functional_blocks": [], "market_share": 0.0,
+                    "is_final_product": False,
+                })
+                added += 1
+            st.success(f"{added}개 추가 (기능블록은 아래 목록에서 개별 지정)")
+            st.rerun()
+
 if not blocks:
-    st.warning("먼저 2번에서 기능 블록을 정의하세요.")
-else:
+    st.warning("먼저 2번에서 기능 블록을 정의하면 블록 분류가 가능합니다. "
+               "지금은 종목만 추가됩니다.")
+if True:
     with st.form("add_company", clear_on_submit=True):
         c1, c2 = st.columns(2)
         code = c1.text_input("종목코드", placeholder="277810")
@@ -104,18 +158,32 @@ else:
             else:
                 st.error("종목코드와 종목명은 필수입니다.")
 
-# 등록된 종목 목록
+# 등록된 종목 목록 (인라인 편집: 블록·점유율·완성품)
 if data["companies"]:
-    st.markdown("**등록된 종목**")
+    st.markdown("**등록된 종목** (펼쳐서 기능블록·점유율 지정)")
     for i, c in enumerate(data["companies"]):
-        cc1, cc2 = st.columns([5, 1])
         tag = "🏁완성품" if c.get("is_final_product") else "🔧부품"
         share_txt = f" · 점유율 {c['market_share']*100:.0f}%" if c.get("market_share") else ""
-        cc1.write(f"{tag} **{c['name']}** ({c['code']}) "
-                  f"— {'/'.join(c.get('functional_blocks', [])) or '미분류'}{share_txt}")
-        if cc2.button("삭제", key=f"delc_{i}"):
-            data["companies"].pop(i)
-            st.rerun()
+        head = (f"{tag} {c['name']} ({c['code']}) — "
+                f"{'/'.join(c.get('functional_blocks', [])) or '미분류'}{share_txt}")
+        with st.expander(head):
+            sel = st.multiselect("기능 블록", blocks,
+                                 default=[b for b in c.get("functional_blocks", []) if b in blocks],
+                                 key=f"eb_{i}")
+            e1, e2 = st.columns(2)
+            sh = e1.slider("점유율 (%)", 0, 100,
+                           int(c.get("market_share", 0) * 100), key=f"es_{i}")
+            fin = e2.checkbox("완성품 제조사", value=c.get("is_final_product", False),
+                              key=f"ef_{i}")
+            b1, b2 = st.columns(2)
+            if b1.button("이 종목 적용", key=f"ea_{i}", use_container_width=True):
+                c["functional_blocks"] = sel
+                c["market_share"] = round(sh / 100.0, 3)
+                c["is_final_product"] = fin
+                st.rerun()
+            if b2.button("삭제", key=f"delc_{i}", use_container_width=True):
+                data["companies"].pop(i)
+                st.rerun()
 st.divider()
 
 
