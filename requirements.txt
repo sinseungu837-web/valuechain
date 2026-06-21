@@ -1,7 +1,6 @@
 streamlit>=1.35.0
 yfinance>=0.2.40
 networkx>=3.0
-pykrx>=1.0.45
 finance-datareader>=0.9.50
-streamlit-autorefresh>=1.0.1
-anthropic>=0.40.0
+pandas>=2.0
+altair>=5.0
