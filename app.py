@@ -25,6 +25,7 @@ from data.sector_store import list_sectors, load_sector, build_chain
 from data.market_sectors import get_industries, stocks_in_industry
 from data.realdata import YfinanceDataProvider
 from analysis.leader import rank_leaders
+from data.parts_glossary import describe as describe_part
 
 
 @st.cache_data(ttl=3600)
@@ -82,26 +83,63 @@ if mode == "🔬 연결 분석 (내 섹터)":
         "🔗 연결도", "🧩 기능블록", "🔎 종목별 연결", "📊 규모·재무",
     ])
 
-    # ── 연결도 (그래프) ──────────────────────────────────────────────────
+    # ── 연결도 (대장주 중심 방사형 그래프) ──────────────────────────────
     with tab_graph:
-        st.caption("화살표 A→B = A가 B에 납품. 숫자는 의존도. "
-                   "여러 곳에 연결된 종목일수록 산업의 길목.")
+        st.caption("대장주(매출 최대)를 중심에 두고, 누가 무슨 부품으로 연결됐는지 "
+                   "방사형으로 봅니다.")
         if not rels:
             st.info("등록된 연결(공급관계)이 없습니다. 섹터 편집에서 추가하세요.")
         else:
-            lines = ["digraph G {", "rankdir=LR;",
-                     'node [shape=box, style="rounded,filled", fontname="sans"];']
+            # 중심 종목 = 대장주(매출 1위). 사용자가 바꿀 수 있음.
+            leaders = rank_leaders(companies, real_map)
+            order = [l.code for l in leaders] or list(codes)
+            center = st.selectbox(
+                "중심 종목 (대장주)", order,
+                format_func=lambda x: f"{name_by_code.get(x, x)} ({x})")
+
+            # 노드 크기: 매출 비례 (대장주가 크게)
+            rev = {l.code: l.revenue for l in leaders}
+            rev_max = max(rev.values()) if rev and max(rev.values()) > 0 else 1
+
+            lines = ["digraph G {",
+                     "layout=twopi; overlap=false; ranksep=2.2;",
+                     f'root="{center}";',
+                     'node [shape=circle, style="filled", fontname="sans", fontsize=11];']
             for c in companies:
                 code = str(c["code"])
-                color = "#ffe0b2" if c.get("is_final_product") else "#c8e6c9"
-                lines.append(f'"{code}" [label="{c["name"]}", fillcolor="{color}"];')
+                is_final = c.get("is_final_product")
+                color = "#ffb74d" if code == center else (
+                    "#ffe0b2" if is_final else "#c8e6c9")
+                # 크기: 매출 비례 (0.6~1.8인치), 중심은 가장 크게
+                size = 0.6 + 1.2 * (rev.get(code, 0) / rev_max)
+                if code == center:
+                    size = max(size, 1.6)
+                lines.append(
+                    f'"{code}" [label="{c["name"]}", fillcolor="{color}", '
+                    f'width={size:.2f}, fixedsize=false];')
             for r in rels:
+                part = r.get("part", "")
                 lines.append(f'"{r["from"]}" -> "{r["to"]}" '
-                             f'[label="{r.get("part","")} {r.get("dependency",0):.2f}", '
-                             f'fontsize=10];')
+                             f'[label="{part}\\n{r.get("dependency",0):.2f}", '
+                             f'fontsize=9, len=2.0];')
             lines.append("}")
             st.graphviz_chart("\n".join(lines), use_container_width=True)
-            st.caption("🟧 완성품(최종 제품)  🟩 부품·소재·장비(공급단)")
+            st.caption("🟠 중심 대장주  🟧 완성품  🟩 부품·소재·장비 "
+                       "/ 원 크기 = 매출 규모 / 화살표 = 공급 방향")
+
+            # 부품 설명 (무엇이고 어떻게 쓰이나)
+            with st.expander("🔧 연결 부품 설명 (무엇이고 어떻게 쓰이나)", expanded=True):
+                seen = set()
+                for r in rels:
+                    part = r.get("part", "")
+                    if not part or part in seen:
+                        continue
+                    seen.add(part)
+                    fn = name_by_code.get(str(r["from"]), r["from"])
+                    tn = name_by_code.get(str(r["to"]), r["to"])
+                    desc = r.get("desc") or describe_part(part) or "설명 미등록"
+                    st.markdown(f"**{part}**  ·  {fn} → {tn}")
+                    st.caption(desc)
 
     # ── 기능블록별 종목 ──────────────────────────────────────────────────
     with tab_block:

@@ -1,0 +1,19 @@
+{
+  "sector": "우주항공",
+  "functional_blocks": ["완성체계", "엔진", "위성", "위성통신", "부품소재"],
+  "companies": [
+    {"code": "047810", "name": "한국항공우주", "functional_blocks": ["완성체계"], "market_share": 0.0, "is_final_product": true},
+    {"code": "012450", "name": "한화에어로스페이스", "functional_blocks": ["엔진", "완성체계"], "market_share": 0.0, "is_final_product": true},
+    {"code": "099190", "name": "쎄트렉아이", "functional_blocks": ["위성"], "market_share": 0.0, "is_final_product": false},
+    {"code": "211270", "name": "AP위성", "functional_blocks": ["위성통신"], "market_share": 0.0, "is_final_product": false},
+    {"code": "189300", "name": "인텔리안테크", "functional_blocks": ["위성통신"], "market_share": 0.0, "is_final_product": false},
+    {"code": "274090", "name": "켄코아에어로스페이스", "functional_blocks": ["부품소재"], "market_share": 0.0, "is_final_product": false}
+  ],
+  "supply_relations": [
+    {"from": "274090", "to": "047810", "block": "부품소재", "part": "항공 복합소재", "dependency": 0.3, "desc": "항공기 구조를 가볍게 만드는 탄소복합 소재·부품."},
+    {"from": "274090", "to": "012450", "block": "부품소재", "part": "항공 복합소재", "dependency": 0.25, "desc": "발사체·항공 구조용 복합소재."},
+    {"from": "012450", "to": "047810", "block": "엔진", "part": "발사체엔진", "dependency": 0.3, "desc": "누리호 등 발사체를 추진하는 엔진."},
+    {"from": "099190", "to": "047810", "block": "위성", "part": "소형위성 본체", "dependency": 0.2, "desc": "관측·통신용 소형 위성 본체·탑재체."},
+    {"from": "189300", "to": "211270", "block": "위성통신", "part": "위성 안테나", "dependency": 0.25, "desc": "위성 신호를 주고받는 안테나·단말."}
+  ]
+}

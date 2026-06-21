@@ -1,0 +1,17 @@
+{
+  "sector": "디스플레이",
+  "functional_blocks": ["패널", "OLED소재", "부품소재", "장비"],
+  "companies": [
+    {"code": "034220", "name": "LG디스플레이", "functional_blocks": ["패널"], "market_share": 0.0, "is_final_product": true},
+    {"code": "213420", "name": "덕산네오룩스", "functional_blocks": ["OLED소재"], "market_share": 0.0, "is_final_product": false},
+    {"code": "272290", "name": "이녹스첨단소재", "functional_blocks": ["부품소재"], "market_share": 0.0, "is_final_product": false},
+    {"code": "036930", "name": "주성엔지니어링", "functional_blocks": ["장비"], "market_share": 0.0, "is_final_product": false},
+    {"code": "265520", "name": "AP시스템", "functional_blocks": ["장비"], "market_share": 0.0, "is_final_product": false}
+  ],
+  "supply_relations": [
+    {"from": "213420", "to": "034220", "block": "OLED소재", "part": "OLED소재", "dependency": 0.3, "desc": "패널 화질을 내는 유기발광 재료를 LG디스플레이에 공급."},
+    {"from": "272290", "to": "034220", "block": "부품소재", "part": "OLED용 점착소재", "dependency": 0.25, "desc": "패널 적층에 쓰이는 점착·봉지 소재."},
+    {"from": "036930", "to": "034220", "block": "장비", "part": "증착장비", "dependency": 0.25, "desc": "OLED 박막을 입히는 증착 공정 장비."},
+    {"from": "265520", "to": "034220", "block": "장비", "part": "레이저결정화장비", "dependency": 0.2, "desc": "OLED 백플레인 공정용 레이저 장비."}
+  ]
+}
