@@ -1,0 +1,25 @@
+{
+  "sector": "2차전지",
+  "functional_blocks": ["양극재", "음극재", "전해질/첨가제", "분리막", "셀제조", "완성차"],
+  "companies": [
+    {"code": "247540", "name": "에코프로비엠", "functional_blocks": ["양극재"], "market_share": 0.0, "is_final_product": false},
+    {"code": "066970", "name": "엘앤에프", "functional_blocks": ["양극재"], "market_share": 0.0, "is_final_product": false},
+    {"code": "003670", "name": "포스코퓨처엠", "functional_blocks": ["양극재", "음극재"], "market_share": 0.0, "is_final_product": false},
+    {"code": "051910", "name": "LG화학", "functional_blocks": ["양극재", "분리막"], "market_share": 0.0, "is_final_product": false},
+    {"code": "278280", "name": "천보", "functional_blocks": ["전해질/첨가제"], "market_share": 0.0, "is_final_product": false},
+    {"code": "373220", "name": "LG에너지솔루션", "functional_blocks": ["셀제조"], "market_share": 0.0, "is_final_product": true},
+    {"code": "006400", "name": "삼성SDI", "functional_blocks": ["셀제조"], "market_share": 0.0, "is_final_product": true},
+    {"code": "096770", "name": "SK이노베이션", "functional_blocks": ["셀제조"], "market_share": 0.0, "is_final_product": true},
+    {"code": "005380", "name": "현대차", "functional_blocks": ["완성차"], "market_share": 0.0, "is_final_product": true}
+  ],
+  "supply_relations": [
+    {"from": "247540", "to": "006400", "block": "양극재", "part": "하이니켈양극재", "dependency": 0.4},
+    {"from": "247540", "to": "096770", "block": "양극재", "part": "하이니켈양극재", "dependency": 0.3},
+    {"from": "066970", "to": "373220", "block": "양극재", "part": "하이니켈양극재", "dependency": 0.4},
+    {"from": "003670", "to": "373220", "block": "음극재", "part": "음극재/양극재", "dependency": 0.35},
+    {"from": "051910", "to": "373220", "block": "분리막", "part": "분리막/소재", "dependency": 0.3},
+    {"from": "278280", "to": "006400", "block": "전해질/첨가제", "part": "전해질첨가제", "dependency": 0.2},
+    {"from": "373220", "to": "005380", "block": "완성차", "part": "배터리셀", "dependency": 0.35},
+    {"from": "006400", "to": "005380", "block": "완성차", "part": "배터리셀", "dependency": 0.2}
+  ]
+}

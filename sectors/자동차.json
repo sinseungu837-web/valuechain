@@ -1,0 +1,23 @@
+{
+  "sector": "자동차",
+  "functional_blocks": ["완성차", "모듈/전장", "파워트레인", "공조", "제동/조향", "타이어"],
+  "companies": [
+    {"code": "005380", "name": "현대차", "functional_blocks": ["완성차"], "market_share": 0.0, "is_final_product": true},
+    {"code": "000270", "name": "기아", "functional_blocks": ["완성차"], "market_share": 0.0, "is_final_product": true},
+    {"code": "012330", "name": "현대모비스", "functional_blocks": ["모듈/전장"], "market_share": 0.0, "is_final_product": false},
+    {"code": "011210", "name": "현대위아", "functional_blocks": ["파워트레인"], "market_share": 0.0, "is_final_product": false},
+    {"code": "018880", "name": "한온시스템", "functional_blocks": ["공조"], "market_share": 0.0, "is_final_product": false},
+    {"code": "204320", "name": "HL만도", "functional_blocks": ["제동/조향"], "market_share": 0.0, "is_final_product": false},
+    {"code": "161390", "name": "한국타이어앤테크놀로지", "functional_blocks": ["타이어"], "market_share": 0.0, "is_final_product": false}
+  ],
+  "supply_relations": [
+    {"from": "012330", "to": "005380", "block": "모듈/전장", "part": "샤시/칵핏모듈", "dependency": 0.5},
+    {"from": "012330", "to": "000270", "block": "모듈/전장", "part": "샤시/칵핏모듈", "dependency": 0.4},
+    {"from": "011210", "to": "005380", "block": "파워트레인", "part": "변속기/엔진부품", "dependency": 0.4},
+    {"from": "018880", "to": "005380", "block": "공조", "part": "공조시스템", "dependency": 0.3},
+    {"from": "018880", "to": "000270", "block": "공조", "part": "공조시스템", "dependency": 0.25},
+    {"from": "204320", "to": "005380", "block": "제동/조향", "part": "브레이크/조향", "dependency": 0.3},
+    {"from": "204320", "to": "000270", "block": "제동/조향", "part": "브레이크/조향", "dependency": 0.25},
+    {"from": "161390", "to": "005380", "block": "타이어", "part": "타이어", "dependency": 0.2}
+  ]
+}

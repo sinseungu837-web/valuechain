@@ -1,0 +1,18 @@
+{
+  "sector": "방산",
+  "functional_blocks": ["완성체계", "전자/레이더", "엔진", "탄약/소재"],
+  "companies": [
+    {"code": "012450", "name": "한화에어로스페이스", "functional_blocks": ["완성체계", "엔진"], "market_share": 0.0, "is_final_product": true},
+    {"code": "079550", "name": "LIG넥스원", "functional_blocks": ["완성체계"], "market_share": 0.0, "is_final_product": true},
+    {"code": "047810", "name": "한국항공우주", "functional_blocks": ["완성체계"], "market_share": 0.0, "is_final_product": true},
+    {"code": "064350", "name": "현대로템", "functional_blocks": ["완성체계"], "market_share": 0.0, "is_final_product": true},
+    {"code": "272210", "name": "한화시스템", "functional_blocks": ["전자/레이더"], "market_share": 0.0, "is_final_product": false},
+    {"code": "103140", "name": "풍산", "functional_blocks": ["탄약/소재"], "market_share": 0.0, "is_final_product": false}
+  ],
+  "supply_relations": [
+    {"from": "272210", "to": "079550", "block": "전자/레이더", "part": "레이더/전자장비", "dependency": 0.25},
+    {"from": "272210", "to": "012450", "block": "전자/레이더", "part": "전자장비", "dependency": 0.2},
+    {"from": "103140", "to": "012450", "block": "탄약/소재", "part": "탄약/신관소재", "dependency": 0.3},
+    {"from": "012450", "to": "047810", "block": "엔진", "part": "항공엔진/부품", "dependency": 0.25}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "sector": "조선",
+  "functional_blocks": ["조선소", "엔진", "강재(후판)"],
+  "companies": [
+    {"code": "009540", "name": "HD한국조선해양", "functional_blocks": ["조선소"], "market_share": 0.0, "is_final_product": true},
+    {"code": "010140", "name": "삼성중공업", "functional_blocks": ["조선소"], "market_share": 0.0, "is_final_product": true},
+    {"code": "042660", "name": "한화오션", "functional_blocks": ["조선소"], "market_share": 0.0, "is_final_product": true},
+    {"code": "329180", "name": "HD현대중공업", "functional_blocks": ["조선소", "엔진"], "market_share": 0.0, "is_final_product": false},
+    {"code": "004020", "name": "현대제철", "functional_blocks": ["강재(후판)"], "market_share": 0.0, "is_final_product": false},
+    {"code": "005490", "name": "POSCO홀딩스", "functional_blocks": ["강재(후판)"], "market_share": 0.0, "is_final_product": false}
+  ],
+  "supply_relations": [
+    {"from": "329180", "to": "009540", "block": "엔진", "part": "선박엔진(힘센)", "dependency": 0.4},
+    {"from": "004020", "to": "009540", "block": "강재(후판)", "part": "조선용 후판", "dependency": 0.3},
+    {"from": "004020", "to": "010140", "block": "강재(후판)", "part": "조선용 후판", "dependency": 0.3},
+    {"from": "005490", "to": "010140", "block": "강재(후판)", "part": "조선용 후판", "dependency": 0.25},
+    {"from": "005490", "to": "042660", "block": "강재(후판)", "part": "조선용 후판", "dependency": 0.25},
+    {"from": "005490", "to": "009540", "block": "강재(후판)", "part": "조선용 후판", "dependency": 0.25}
+  ]
+}

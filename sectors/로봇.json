@@ -1,0 +1,19 @@
+{
+  "sector": "로봇",
+  "functional_blocks": ["완성로봇", "감속기", "모터/구동", "부품"],
+  "companies": [
+    {"code": "277810", "name": "레인보우로보틱스", "functional_blocks": ["완성로봇"], "market_share": 0.0, "is_final_product": true},
+    {"code": "454910", "name": "두산로보틱스", "functional_blocks": ["완성로봇"], "market_share": 0.0, "is_final_product": true},
+    {"code": "090360", "name": "로보스타", "functional_blocks": ["완성로봇"], "market_share": 0.0, "is_final_product": true},
+    {"code": "058610", "name": "에스피지", "functional_blocks": ["감속기", "모터/구동"], "market_share": 0.0, "is_final_product": false},
+    {"code": "389500", "name": "에스비비테크", "functional_blocks": ["감속기"], "market_share": 0.0, "is_final_product": false},
+    {"code": "117730", "name": "티로보틱스", "functional_blocks": ["부품"], "market_share": 0.0, "is_final_product": false}
+  ],
+  "supply_relations": [
+    {"from": "058610", "to": "277810", "block": "감속기", "part": "정밀감속기/모터", "dependency": 0.3},
+    {"from": "058610", "to": "454910", "block": "감속기", "part": "정밀감속기/모터", "dependency": 0.3},
+    {"from": "389500", "to": "454910", "block": "감속기", "part": "하모닉감속기", "dependency": 0.3},
+    {"from": "389500", "to": "277810", "block": "감속기", "part": "하모닉감속기", "dependency": 0.25},
+    {"from": "117730", "to": "277810", "block": "부품", "part": "로봇부품", "dependency": 0.2}
+  ]
+}
