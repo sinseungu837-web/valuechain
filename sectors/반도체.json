@@ -1,0 +1,77 @@
+{
+  "sector": "반도체",
+  "functional_blocks": [
+    "전공정장비",
+    "후공정장비",
+    "테스트부품",
+    "제조"
+  ],
+  "companies": [
+    {
+      "code": "042700",
+      "name": "한미반도체",
+      "functional_blocks": ["후공정장비"],
+      "technologies": ["TC본더", "HBM후공정"],
+      "market_share": 0.0,
+      "is_final_product": false
+    },
+    {
+      "code": "403870",
+      "name": "HPSP",
+      "functional_blocks": ["전공정장비"],
+      "technologies": ["고압수소어닐링"],
+      "market_share": 0.0,
+      "is_final_product": false
+    },
+    {
+      "code": "240810",
+      "name": "원익IPS",
+      "functional_blocks": ["전공정장비"],
+      "technologies": ["증착장비"],
+      "market_share": 0.0,
+      "is_final_product": false
+    },
+    {
+      "code": "058470",
+      "name": "리노공업",
+      "functional_blocks": ["테스트부품"],
+      "technologies": ["테스트소켓"],
+      "market_share": 0.0,
+      "is_final_product": false
+    },
+    {
+      "code": "095340",
+      "name": "ISC",
+      "functional_blocks": ["테스트부품"],
+      "technologies": ["테스트소켓"],
+      "market_share": 0.0,
+      "is_final_product": false
+    },
+    {
+      "code": "000660",
+      "name": "SK하이닉스",
+      "functional_blocks": ["제조"],
+      "technologies": ["HBM", "DRAM"],
+      "market_share": 0.0,
+      "is_final_product": true
+    },
+    {
+      "code": "005930",
+      "name": "삼성전자",
+      "functional_blocks": ["제조"],
+      "technologies": ["HBM", "DRAM", "파운드리"],
+      "market_share": 0.0,
+      "is_final_product": true
+    }
+  ],
+  "supply_relations": [
+    {"from": "042700", "to": "000660", "block": "후공정장비", "part": "TC본더", "dependency": 0.55},
+    {"from": "042700", "to": "005930", "block": "후공정장비", "part": "TC본더", "dependency": 0.30},
+    {"from": "403870", "to": "000660", "block": "전공정장비", "part": "고압수소어닐링", "dependency": 0.25},
+    {"from": "403870", "to": "005930", "block": "전공정장비", "part": "고압수소어닐링", "dependency": 0.25},
+    {"from": "240810", "to": "005930", "block": "전공정장비", "part": "증착장비", "dependency": 0.20},
+    {"from": "058470", "to": "000660", "block": "테스트부품", "part": "테스트소켓", "dependency": 0.15},
+    {"from": "058470", "to": "005930", "block": "테스트부품", "part": "테스트소켓", "dependency": 0.15},
+    {"from": "095340", "to": "000660", "block": "테스트부품", "part": "테스트소켓", "dependency": 0.12}
+  ]
+}

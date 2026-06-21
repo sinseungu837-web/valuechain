@@ -26,11 +26,12 @@ class Company:
     name: str
     tier: str               # 밸류체인 단계: 소재/장비/파운드리/팹리스/세트 등
     technologies: list[str] = field(default_factory=list)  # 핵심 기술 태그
-    biz_model: str = "혼합"
-    # B2B수주   : 프로젝트 계약 기반 (방산·조선·건설·반도체장비)
-    # B2B납품   : 기업 간 정기 납품 (부품소재·전자부품·배터리소재)
-    # B2C       : 소비자 직접 판매 (소비재·게임·외식·유통)
-    # 혼합      : B2B+B2C 또는 시장가 판매 (자동차·철강·무역)
+    biz_model: str = "혼합"   # (V2 잔재, V3에서는 사용 안 함)
+    # V3: 산업을 기능 부품 블록으로 해부하기 위한 필드.
+    # 설계 문서는 단수(str)였으나 한 기업이 여러 블록을 담당할 수 있어 list로 둔다.
+    functional_blocks: list[str] = field(default_factory=list)  # 예: ["판단", "골격"]
+    market_share: float = 0.0       # 섹터 내 시장점유율 0~1 (사용자 입력/추정)
+    is_final_product: bool = False  # 완성품 제조사인가 (금 캐는 사람)
 
 
 class ValueChain:
