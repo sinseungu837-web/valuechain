@@ -21,12 +21,23 @@ _FALLBACK_INDUSTRIES = [
 
 
 def _load_krx_desc():
-    """KRX-DESC DataFrame 로드. 실패 시 None."""
+    """
+    KRX-DESC(업종 분류) + KRX(시가총액)를 합친 DataFrame 로드. 실패 시 None.
+    KRX-DESC에는 시총이 없어, KRX 목록의 Marcap을 코드로 합쳐 정렬에 쓴다.
+    """
     try:
         import FinanceDataReader as fdr
         df = fdr.StockListing("KRX-DESC")
         if df is None or df.empty or "Industry" not in df.columns:
             return None
+        # 시가총액 병합 (정렬용)
+        try:
+            cap = fdr.StockListing("KRX")
+            if cap is not None and "Marcap" in cap.columns:
+                cap = cap[["Code", "Marcap"]].copy()
+                df = df.merge(cap, on="Code", how="left")
+        except Exception:
+            pass
         return df
     except Exception:
         return None
