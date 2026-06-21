@@ -43,6 +43,57 @@ def _fetch_real(codes: tuple):
     return YfinanceDataProvider().fetch_many(list(codes))
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def _price_history(code: str):
+    """1년 종가 + 거래량 (KS→KQ 폴백). 실패 시 None."""
+    import yfinance as yf
+    import warnings
+    for suffix in [".KS", ".KQ"]:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            hist = yf.Ticker(f"{code}{suffix}").history(period="1y")
+        if not hist.empty:
+            return hist
+    return None
+
+
+# 기능블록 → 색상 팔레트 (연결선 색 구분용)
+_BLOCK_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                 "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"]
+
+
+def _render_stock_detail(code: str, name: str, real_map):
+    """종목 차트 + 핵심 지표."""
+    rd = real_map.get(code)
+    hist = _price_history(code)
+    if hist is not None:
+        cur = hist["Close"].iloc[-1]
+        first = hist["Close"].iloc[0]
+        chg = (cur / first - 1) * 100 if first else 0
+        c1, c2 = st.columns(2)
+        c1.metric("현재가", f"{cur:,.0f}원", f"{chg:+.1f}% (1년)")
+        if rd:
+            c2.metric("시가총액",
+                      f"{rd.market_signals.market_cap/1e12:.1f}조"
+                      if rd.market_signals.market_cap else "N/A")
+        st.line_chart(hist["Close"], height=200)
+        st.caption("1년 종가 · 출처 Yahoo Finance (지연)")
+    else:
+        st.caption("차트 데이터 없음")
+
+    if rd:
+        f, sig = rd.financials, rd.market_signals
+        m1, m2, m3 = st.columns(3)
+        m1.metric("PER", f"{sig.per:.1f}배" if sig.per else "N/A")
+        m2.metric("PBR", f"{sig.pbr:.1f}배" if sig.pbr else "N/A")
+        m3.metric("영익률", f"{f.op_margin:.1f}%")
+        m4, m5, m6 = st.columns(3)
+        m4.metric("매출성장", f"{f.revenue_growth_yoy:+.1f}%")
+        m5.metric("영익성장", f"{f.op_profit_growth_yoy:+.1f}%")
+        m6.metric("1년수익률", f"{sig.price_return_1y:+.1f}%")
+        st.caption("출처: Yahoo Finance 연간 재무·시세")
+
+
 st.title("🔗 ValueChain 연결 분석")
 st.caption("섹터 종목들이 서로 어떻게 엮여 있는지(공급 구조)를 봅니다. "
            "예측·판정 아님 · 구조 이해 · 투자 자문 아님.")
@@ -83,49 +134,63 @@ if mode == "🔬 연결 분석 (내 섹터)":
         "🔗 연결도", "🧩 기능블록", "🔎 종목별 연결", "📊 규모·재무",
     ])
 
-    # ── 연결도 (대장주 중심 방사형 그래프) ──────────────────────────────
+    # ── 연결도 (섹터 중심 방사형 그래프) ────────────────────────────────
     with tab_graph:
-        st.caption("대장주(매출 최대)를 중심에 두고, 누가 무슨 부품으로 연결됐는지 "
-                   "방사형으로 봅니다.")
+        st.caption(f"가운데 **{sector}**를 중심으로 완성품·공급사가 어떻게 연결됐는지 "
+                   "봅니다. 연결선 색 = 부품 종류.")
         if not rels:
             st.info("등록된 연결(공급관계)이 없습니다. 섹터 편집에서 추가하세요.")
         else:
-            # 중심 종목 = 대장주(매출 1위). 사용자가 바꿀 수 있음.
             leaders = rank_leaders(companies, real_map)
-            order = [l.code for l in leaders] or list(codes)
-            center = st.selectbox(
-                "중심 종목 (대장주)", order,
-                format_func=lambda x: f"{name_by_code.get(x, x)} ({x})")
-
-            # 노드 크기: 매출 비례 (대장주가 크게)
             rev = {l.code: l.revenue for l in leaders}
             rev_max = max(rev.values()) if rev and max(rev.values()) > 0 else 1
 
+            # 블록 → 색상 매핑
+            blocks = data.get("functional_blocks", [])
+            block_color = {b: _BLOCK_COLORS[i % len(_BLOCK_COLORS)]
+                           for i, b in enumerate(blocks)}
+
+            SECTOR_NODE = "__SECTOR__"
             lines = ["digraph G {",
-                     "layout=twopi; overlap=false; ranksep=2.2;",
-                     f'root="{center}";',
+                     "layout=twopi; overlap=false; ranksep=1.8; splines=true;",
+                     f'root="{SECTOR_NODE}";',
                      'node [shape=circle, style="filled", fontname="sans", fontsize=11];']
+            # 중심: 섹터 노드
+            lines.append(f'"{SECTOR_NODE}" [label="{sector}", shape=doublecircle, '
+                         f'fillcolor="#42a5f5", fontcolor="white", '
+                         f'fontsize=15, width=1.4];')
+            # 종목 노드 (매출 비례 크기)
             for c in companies:
                 code = str(c["code"])
                 is_final = c.get("is_final_product")
-                color = "#ffb74d" if code == center else (
-                    "#ffe0b2" if is_final else "#c8e6c9")
-                # 크기: 매출 비례 (0.6~1.8인치), 중심은 가장 크게
-                size = 0.6 + 1.2 * (rev.get(code, 0) / rev_max)
-                if code == center:
-                    size = max(size, 1.6)
+                color = "#ffcc80" if is_final else "#c8e6c9"
+                size = 0.7 + 1.1 * (rev.get(code, 0) / rev_max)
                 lines.append(
                     f'"{code}" [label="{c["name"]}", fillcolor="{color}", '
                     f'width={size:.2f}, fixedsize=false];')
+            # 섹터 → 완성품 (중심에서 뻗는 굵은 회색선)
+            for c in companies:
+                if c.get("is_final_product"):
+                    lines.append(f'"{SECTOR_NODE}" -> "{c["code"]}" '
+                                 f'[color="#bbbbbb", penwidth=2, arrowhead=none];')
+            # 공급관계 (부품 블록 색상)
             for r in rels:
                 part = r.get("part", "")
+                col = block_color.get(r.get("block", ""), "#888888")
                 lines.append(f'"{r["from"]}" -> "{r["to"]}" '
-                             f'[label="{part}\\n{r.get("dependency",0):.2f}", '
-                             f'fontsize=9, len=2.0];')
+                             f'[label="{part}", color="{col}", fontcolor="{col}", '
+                             f'penwidth=2, fontsize=9];')
             lines.append("}")
             st.graphviz_chart("\n".join(lines), use_container_width=True)
-            st.caption("🟠 중심 대장주  🟧 완성품  🟩 부품·소재·장비 "
-                       "/ 원 크기 = 매출 규모 / 화살표 = 공급 방향")
+            st.caption("🔵 섹터(중심)  🟧 완성품  🟩 부품·소재·장비 "
+                       "/ 원 크기 = 매출 규모 / 선 색 = 부품 종류")
+
+            # 부품 색상 범례
+            if block_color:
+                legend = "  ".join(
+                    f'<span style="color:{c};font-weight:bold">●</span> {b}'
+                    for b, c in block_color.items())
+                st.markdown(f"**부품 종류:** {legend}", unsafe_allow_html=True)
 
             # 부품 설명 (무엇이고 어떻게 쓰이나)
             with st.expander("🔧 연결 부품 설명 (무엇이고 어떻게 쓰이나)", expanded=True):
@@ -137,8 +202,11 @@ if mode == "🔬 연결 분석 (내 섹터)":
                     seen.add(part)
                     fn = name_by_code.get(str(r["from"]), r["from"])
                     tn = name_by_code.get(str(r["to"]), r["to"])
+                    col = block_color.get(r.get("block", ""), "#888888")
                     desc = r.get("desc") or describe_part(part) or "설명 미등록"
-                    st.markdown(f"**{part}**  ·  {fn} → {tn}")
+                    st.markdown(
+                        f'<span style="color:{col}">●</span> **{part}**  ·  '
+                        f'{fn} → {tn}', unsafe_allow_html=True)
                     st.caption(desc)
 
     # ── 기능블록별 종목 ──────────────────────────────────────────────────
@@ -205,6 +273,11 @@ if mode == "🔬 연결 분석 (내 섹터)":
                 tn = name_by_code.get(str(r["to"]), r["to"])
                 st.write(f"- {fn} → {tn}: {r.get('part','')} "
                          f"[{r.get('block','')}]")
+
+        # 차트 + 지표
+        st.divider()
+        st.markdown("### 📈 차트 · 지표")
+        _render_stock_detail(sel_code, name_by_code.get(sel_code, sel_code), real_map)
 
     # ── 규모·재무 ────────────────────────────────────────────────────────
     with tab_size:

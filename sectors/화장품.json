@@ -1,0 +1,18 @@
+{
+  "sector": "화장품",
+  "functional_blocks": ["브랜드", "ODM/OEM", "부자재"],
+  "companies": [
+    {"code": "090430", "name": "아모레퍼시픽", "functional_blocks": ["브랜드"], "market_share": 0.0, "is_final_product": true},
+    {"code": "051900", "name": "LG생활건강", "functional_blocks": ["브랜드"], "market_share": 0.0, "is_final_product": true},
+    {"code": "192820", "name": "코스맥스", "functional_blocks": ["ODM/OEM"], "market_share": 0.0, "is_final_product": false},
+    {"code": "161890", "name": "한국콜마", "functional_blocks": ["ODM/OEM"], "market_share": 0.0, "is_final_product": false},
+    {"code": "241710", "name": "코스메카코리아", "functional_blocks": ["ODM/OEM"], "market_share": 0.0, "is_final_product": false}
+  ],
+  "supply_relations": [
+    {"from": "192820", "to": "090430", "block": "ODM/OEM", "part": "화장품 ODM", "dependency": 0.3, "desc": "브랜드가 기획만 하고 제조를 위탁하는 방식. 코스맥스가 처방·생산을 맡아 공급."},
+    {"from": "192820", "to": "051900", "block": "ODM/OEM", "part": "화장품 ODM", "dependency": 0.25, "desc": "LG생활건강 브랜드 제품의 위탁 제조."},
+    {"from": "161890", "to": "090430", "block": "ODM/OEM", "part": "화장품 ODM", "dependency": 0.25, "desc": "한국콜마가 처방·생산을 맡아 브랜드에 공급."},
+    {"from": "161890", "to": "051900", "block": "ODM/OEM", "part": "화장품 ODM", "dependency": 0.2, "desc": "위탁 제조."},
+    {"from": "241710", "to": "090430", "block": "ODM/OEM", "part": "화장품 ODM", "dependency": 0.15, "desc": "중소 ODM의 브랜드 납품."}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "sector": "건설",
+  "functional_blocks": ["건설사", "시멘트", "철근/철강"],
+  "companies": [
+    {"code": "000720", "name": "현대건설", "functional_blocks": ["건설사"], "market_share": 0.0, "is_final_product": true},
+    {"code": "006360", "name": "GS건설", "functional_blocks": ["건설사"], "market_share": 0.0, "is_final_product": true},
+    {"code": "047040", "name": "대우건설", "functional_blocks": ["건설사"], "market_share": 0.0, "is_final_product": true},
+    {"code": "375500", "name": "DL이앤씨", "functional_blocks": ["건설사"], "market_share": 0.0, "is_final_product": true},
+    {"code": "003410", "name": "쌍용C&E", "functional_blocks": ["시멘트"], "market_share": 0.0, "is_final_product": false},
+    {"code": "300720", "name": "한일시멘트", "functional_blocks": ["시멘트"], "market_share": 0.0, "is_final_product": false},
+    {"code": "004020", "name": "현대제철", "functional_blocks": ["철근/철강"], "market_share": 0.0, "is_final_product": false}
+  ],
+  "supply_relations": [
+    {"from": "003410", "to": "000720", "block": "시멘트", "part": "시멘트", "dependency": 0.2, "desc": "콘크리트의 기초 결합재. 건물·토목 구조의 바탕."},
+    {"from": "003410", "to": "006360", "block": "시멘트", "part": "시멘트", "dependency": 0.2, "desc": "콘크리트용 시멘트 공급."},
+    {"from": "300720", "to": "047040", "block": "시멘트", "part": "시멘트", "dependency": 0.2, "desc": "콘크리트용 시멘트 공급."},
+    {"from": "300720", "to": "375500", "block": "시멘트", "part": "시멘트", "dependency": 0.2, "desc": "콘크리트용 시멘트 공급."},
+    {"from": "004020", "to": "000720", "block": "철근/철강", "part": "철근", "dependency": 0.2, "desc": "콘크리트를 보강하는 강철 막대. 건물 골조의 뼈대."}
+  ]
+}

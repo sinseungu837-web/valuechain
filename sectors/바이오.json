@@ -1,0 +1,17 @@
+{
+  "sector": "바이오",
+  "functional_blocks": ["제약", "CDMO", "원천기술"],
+  "companies": [
+    {"code": "068270", "name": "셀트리온", "functional_blocks": ["제약"], "market_share": 0.0, "is_final_product": true},
+    {"code": "128940", "name": "한미약품", "functional_blocks": ["제약"], "market_share": 0.0, "is_final_product": true},
+    {"code": "000100", "name": "유한양행", "functional_blocks": ["제약"], "market_share": 0.0, "is_final_product": true},
+    {"code": "207940", "name": "삼성바이오로직스", "functional_blocks": ["CDMO"], "market_share": 0.0, "is_final_product": false},
+    {"code": "237690", "name": "에스티팜", "functional_blocks": ["CDMO"], "market_share": 0.0, "is_final_product": false},
+    {"code": "196170", "name": "알테오젠", "functional_blocks": ["원천기술"], "market_share": 0.0, "is_final_product": false}
+  ],
+  "supply_relations": [
+    {"from": "237690", "to": "128940", "block": "CDMO", "part": "원료의약품(API)", "dependency": 0.2, "desc": "신약의 핵심 원료를 위탁 생산해 제약사에 공급."},
+    {"from": "207940", "to": "068270", "block": "CDMO", "part": "위탁생산(CMO)", "dependency": 0.15, "desc": "항체의약품을 대신 생산해 주는 위탁생산 서비스."},
+    {"from": "196170", "to": "068270", "block": "원천기술", "part": "제형화 기술", "dependency": 0.15, "desc": "주사약을 피하주사로 바꾸는 제형 기술을 이전·공급."}
+  ]
+}
