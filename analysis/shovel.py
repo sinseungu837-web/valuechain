@@ -27,6 +27,8 @@ class Financials:
     op_margin: float             # 영업이익률 (%)
     op_profit_growth_yoy: float  # 영업이익 성장률 (%)
     order_backlog_ratio: float   # 수주잔고/연매출 배수 (없으면 0)
+    revenue: float = 0.0         # 절대 매출 (원) — 대장주 랭킹용
+    op_income: float = 0.0       # 절대 영업이익 (원) — 대장주 랭킹용
 
 
 @dataclass

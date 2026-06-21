@@ -183,3 +183,18 @@
 - STEP 1 완료: `data/sector_store.py`(스키마 로드/저장/그래프 빌드),
   `core/graph.py` Company에 functional_blocks·market_share·is_final_product 추가,
   `sectors/반도체.json` 이전 완료.
+- STEP 2 완료: `pages/1_섹터_편집.py` 입력 UI.
+  `data/market_sectors.py`로 거래소 공식 업종(KRX-DESC)을 드롭다운에 제공하고,
+  업종 선택 시 구성 종목을 자동 후보로 보여줌 + 종목별 인라인 편집.
+- STEP 3 완료: `pages/2_섹터_분석.py`에서 yfinance 시세·재무 자동 연결
+  (`fetch_real` 캐시, 실패 종목 graceful 제외).
+- STEP 4 완료: 같은 페이지에 출력 4탭 —
+  기능블록 지도 / 대장주 랭킹(`analysis/leader.py`) / 곡괭이 4분면(Altair) /
+  공급관계 그래프(graphviz DOT).
+- STEP 5 검증: 반도체 전체 흐름 완주. 삼성전자=대장주(0.96)·곡괭이 낮음,
+  한미반도체/HPSP=곡괭이(0.63)·대장주 낮음 → 두 축 분리 확인.
+
+## 9. 남은 작업
+- 로봇 등 두 번째 섹터를 직접 채워 두 번째 사례 만들기 (STEP 5 후반).
+- (선택) STEP 6: AI 텍스트 독해로 공급관계 초안 생성.
+- 기존 예측 앱(app.py)은 메인 페이지로 잔존 — 추후 정리/제거 결정 필요.

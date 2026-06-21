@@ -99,7 +99,9 @@ class YfinanceDataProvider:
                               round(rev_growth, 1),
                               round(op_margin, 1),
                               round(op_growth, 1),
-                              0.0)
+                              0.0,
+                              revenue=rev_now,
+                              op_income=op_now)
         except Exception:
             return Financials(code, 0, 0, 0, 0)
 
